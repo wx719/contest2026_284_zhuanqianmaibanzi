@@ -22,3 +22,12 @@ INCLUDES := ${INCDIR_PREFIX}chip \
             ${INCDIR_PREFIX}chip/espressif $(INCLUDES)
 
 CFLAGS += ${DEFINE_PREFIX}_RETARGETABLE_LOCKING
+
+# The reused Espressif common sources select ESP32-P4-specific timer,
+# interrupt, UART and start-up paths with CONFIG_ARCH_CHIP_ESP32P4.  This
+# custom chip port is configured through CONFIG_ARCH_CHIP_ESP32P4_VENDOR,
+# so provide the standard compile-time selector for those sources as well.
+
+ifeq ($(CONFIG_ARCH_CHIP_ESP32P4_VENDOR),y)
+  CFLAGS += ${DEFINE_PREFIX}CONFIG_ARCH_CHIP_ESP32P4=1
+endif
