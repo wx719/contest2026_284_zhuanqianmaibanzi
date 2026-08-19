@@ -49,7 +49,8 @@
 #  define SYSTIMER_TRIGGER_TYPE ESP_IRQ_TRIGGER_EDGE
 #endif /* SOC_SYSTIMER_INT_LEVEL */
 
-#if defined(CONFIG_ARCH_CHIP_ESP32P4)
+#if defined(CONFIG_ARCH_CHIP_ESP32P4) || \
+    defined(CONFIG_ARCH_CHIP_ESP32P4_VENDOR)
 #  define CHIP_SYSTIMER_SOURCE SYSTIMER_TARGET0_INTR_SOURCE
 #else
 #  define CHIP_SYSTIMER_SOURCE SYSTIMER_TARGET0_EDGE_INTR_SOURCE
@@ -117,7 +118,8 @@ static int systimer_irq_handler(int irq, void *context, void *arg)
 
 void up_timer_initialize(void)
 {
-#ifdef CONFIG_ARCH_CHIP_ESP32P4
+#if defined(CONFIG_ARCH_CHIP_ESP32P4) || \
+    defined(CONFIG_ARCH_CHIP_ESP32P4_VENDOR)
   PERIPH_RCC_ACQUIRE_ATOMIC(PERIPH_SYSTIMER_MODULE, ref_count)
     {
       if (ref_count == 0)
