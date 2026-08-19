@@ -44,6 +44,7 @@ struct i2c_master_s *velapoka_i2c_initialize(void);
 
 int velapoka_lcd_reset(void);
 int velapoka_lcd_backlight(bool enable);
+int velapoka_display_initialize(void);
 int velapoka_bsp_initialize(void);
 
 #ifdef CONFIG_VELAPOKA_TOUCHSCREEN

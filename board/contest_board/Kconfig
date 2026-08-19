@@ -33,6 +33,16 @@ config VELAPOKA_TOUCHSCREEN
 		LCD adapter does not route GT911 INT to ESP32-P4, therefore the BSP
 		uses periodic I2C polling.
 
+config VELAPOKA_DISPLAY
+	bool "Enable EK79007 MIPI-DSI display bring-up"
+	default y
+	depends on VELAPOKA_BSP
+	select ESPRESSIF_MIPI_DSI
+	---help---
+		Power the ESP32-P4 D-PHY, initialize the EK79007 panel and start
+		the DSI hardware color-bar pattern.  This first-light path validates
+		the panel without requiring PSRAM framebuffer support.
+
 if VELAPOKA_TOUCHSCREEN
 
 config VELAPOKA_TOUCHSCREEN_PATH

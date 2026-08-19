@@ -10,6 +10,9 @@
 # 注意：logs/ 下最终导出的 AI Coding 日志必须提交，不要忽略！
 # ============================================================
 
+# Environment (local credentials, not for commit)
+.env
+
 # Build artifacts
 build/
 out/

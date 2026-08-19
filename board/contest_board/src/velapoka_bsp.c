@@ -10,8 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <syslog.h>
-#include <unistd.h>
 
+#include <nuttx/arch.h>
 #include <nuttx/fs/fs.h>
 #include <nuttx/i2c/i2c_master.h>
 
@@ -113,9 +113,9 @@ int velapoka_lcd_backlight(bool enable)
 int velapoka_lcd_reset(void)
 {
   esp_gpiowrite(BOARD_VELAPOKA_LCD_RESET, false);
-  usleep(20000);
+  up_mdelay(20);
   esp_gpiowrite(BOARD_VELAPOKA_LCD_RESET, true);
-  usleep(120000);
+  up_mdelay(120);
   return OK;
 }
 
@@ -166,7 +166,18 @@ int velapoka_bsp_initialize(void)
   ret = velapoka_touchscreen_initialize();
   if (ret < 0)
     {
-      syslog(LOG_ERR, "ERROR: GT911 initialization failed: %d\n", ret);
+      syslog(LOG_WARNING,
+             "WARNING: GT911 initialization failed: %d; continuing\n",
+             ret);
+    }
+#endif
+
+#ifdef CONFIG_VELAPOKA_DISPLAY
+  ret = velapoka_display_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: MIPI-DSI display initialization failed: %d\n",
+             ret);
       return ret;
     }
 #endif

@@ -98,6 +98,10 @@ ifeq ($(CONFIG_ESPRESSIF_TEMP),y)
 	CHIP_CSRCS += esp_temperature_sensor.c
 endif
 
+ifeq ($(CONFIG_ESPRESSIF_MIPI_DSI),y)
+	CHIP_CSRCS += esp_mipi_dsi.c
+endif
+
 ifeq ($(CONFIG_ESPRESSIF_I2C),y)
 	ifeq ($(CONFIG_ESPRESSIF_I2C_PERIPH),y)
 		CHIP_CSRCS += esp_i2c.c

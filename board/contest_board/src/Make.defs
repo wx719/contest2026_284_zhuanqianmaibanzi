@@ -32,6 +32,10 @@ ifeq ($(CONFIG_VELAPOKA_TOUCHSCREEN),y)
   CSRCS += velapoka_gt911.c
 endif
 
+ifeq ($(CONFIG_VELAPOKA_DISPLAY),y)
+  CSRCS += velapoka_display.c
+endif
+
 ifeq ($(CONFIG_BOARDCTL),y)
   CSRCS += esp32p4_appinit.c
 
@@ -51,3 +55,6 @@ endif
 DEPPATH += --dep-path board
 VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)chip$(DELIM)esp-hal-3rdparty$(DELIM)components$(DELIM)esp_hw_support$(DELIM)ldo$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)chip$(DELIM)esp-hal-3rdparty$(DELIM)components$(DELIM)esp_common$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)chip$(DELIM)esp-hal-3rdparty$(DELIM)nuttx$(DELIM)esp32p4$(DELIM)include

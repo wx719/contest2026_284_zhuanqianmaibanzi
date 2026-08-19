@@ -2091,6 +2091,34 @@ config ESPRESSIF_BROWNOUT_DET_LVL
 
 endmenu # ESPRESSIF_BROWNOUT_DET
 
+menuconfig ESPRESSIF_MIPI_DSI
+	bool "MIPI DSI Host"
+	default n
+	select DRIVERS_VIDEO
+	select MIPI_DSI
+	---help---
+		Enable the ESP32-P4 MIPI-DSI host using the NuttX MIPI-DSI API.
+		The board must enable the D-PHY supply before initializing the host.
+
+if ESPRESSIF_MIPI_DSI
+
+config ESPRESSIF_MIPI_DSI_BUS
+	int "DSI host bus number"
+	default 0
+	range 0 0
+
+config ESPRESSIF_MIPI_DSI_LANES
+	int "Default number of DSI data lanes"
+	default 2
+	range 1 2
+
+config ESPRESSIF_MIPI_DSI_LANE_BITRATE_MBPS
+	int "Default DSI lane bit rate (Mbps)"
+	default 1000
+	range 80 1500
+
+endif # ESPRESSIF_MIPI_DSI
+
 menu "Internal Temperature Sensor Configuration"
 	depends on ESPRESSIF_TEMP
 
