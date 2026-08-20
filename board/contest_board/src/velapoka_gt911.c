@@ -13,24 +13,50 @@
 
 #include <nuttx/i2c/i2c_master.h>
 #include <nuttx/input/touchscreen.h>
+#include <nuttx/arch.h>
 #include <nuttx/wqueue.h>
 
 #include <arch/board/board.h>
 
 #include <arch/board/velapoka_bsp.h>
 
+#include "espressif/esp_gpio.h"
+
 #define GT911_STATUS_REG       0x814e
 #define GT911_POINT_REG        0x814f
 #define GT911_PRODUCT_ID_REG   0x8140
+#define GT911_CONFIG_REG       0x8047
 #define GT911_MAX_POINTS       5
 #define GT911_POINT_BYTES      8
 #define GT911_BUFFER_SIZE      (1 + GT911_MAX_POINTS * GT911_POINT_BYTES)
+#define GT911_POWERON_DELAY_MS 120
+#define GT911_PROBE_RETRIES    3
+#define GT911_PROBE_DELAY_MS   20
+
+static void gt911_select_address(uint8_t addr)
+{
+  bool int_level = addr == BOARD_VELAPOKA_TOUCH_ALT_ADDR;
+
+  esp_configgpio(BOARD_VELAPOKA_TOUCH_RESET, OUTPUT);
+  esp_configgpio(BOARD_VELAPOKA_TOUCH_INT, OUTPUT);
+  esp_gpiowrite(BOARD_VELAPOKA_TOUCH_RESET, false);
+  esp_gpiowrite(BOARD_VELAPOKA_TOUCH_INT, false);
+  up_mdelay(10);
+
+  esp_gpiowrite(BOARD_VELAPOKA_TOUCH_INT, int_level);
+  up_mdelay(1);
+  esp_gpiowrite(BOARD_VELAPOKA_TOUCH_RESET, true);
+  up_mdelay(10);
+  up_mdelay(50);
+  esp_configgpio(BOARD_VELAPOKA_TOUCH_INT, INPUT);
+}
 
 struct gt911_dev_s
 {
   struct touch_lowerhalf_s lower;
   struct i2c_master_s *i2c;
   struct work_s work;
+  uint8_t addr;
   bool contact;
   int16_t last_x;
   int16_t last_y;
@@ -48,14 +74,14 @@ static int gt911_read(FAR struct gt911_dev_s *dev, uint16_t reg,
   {
     {
       .frequency = BOARD_VELAPOKA_TOUCH_FREQUENCY,
-      .addr = BOARD_VELAPOKA_TOUCH_ADDR,
-      .flags = 0,
+      .addr = dev->addr,
+      .flags = I2C_M_NOSTOP,
       .buffer = regbuf,
       .length = sizeof(regbuf),
     },
     {
       .frequency = BOARD_VELAPOKA_TOUCH_FREQUENCY,
-      .addr = BOARD_VELAPOKA_TOUCH_ADDR,
+      .addr = dev->addr,
       .flags = I2C_M_READ,
       .buffer = buffer,
       .length = buflen,
@@ -72,13 +98,39 @@ static int gt911_write_u8(FAR struct gt911_dev_s *dev, uint16_t reg,
   struct i2c_msg_s msg =
   {
     .frequency = BOARD_VELAPOKA_TOUCH_FREQUENCY,
-    .addr = BOARD_VELAPOKA_TOUCH_ADDR,
+    .addr = dev->addr,
     .flags = 0,
     .buffer = buffer,
     .length = sizeof(buffer),
   };
 
   return I2C_TRANSFER(dev->i2c, &msg, 1);
+}
+
+static void gt911_scan_bus(FAR struct gt911_dev_s *dev)
+{
+  struct i2c_msg_s msg =
+  {
+    .frequency = BOARD_VELAPOKA_TOUCH_FREQUENCY,
+    .flags = 0,
+    .buffer = NULL,
+    .length = 0,
+  };
+  bool found = false;
+  uint8_t addr;
+
+  syslog(LOG_INFO, "GT911: scanning I2C bus");
+  for (addr = 0x08; addr <= 0x77; addr++)
+    {
+      msg.addr = addr;
+      if (I2C_TRANSFER(dev->i2c, &msg, 1) >= 0)
+        {
+          syslog(LOG_INFO, " 0x%02x", addr);
+          found = true;
+        }
+    }
+
+  syslog(LOG_INFO, found ? "\n" : " no devices found\n");
 }
 
 static uint16_t gt911_get_le16(FAR const uint8_t *value)
@@ -93,6 +145,8 @@ static void gt911_report(FAR struct gt911_dev_s *dev, bool down,
   FAR struct touch_point_s *point = &sample.point[0];
   uint16_t raw_x;
   uint16_t raw_y;
+  int16_t x;
+  int16_t y;
 
   memset(&sample, 0, sizeof(sample));
   sample.npoints = 1;
@@ -103,9 +157,7 @@ static void gt911_report(FAR struct gt911_dev_s *dev, bool down,
       raw_y = gt911_get_le16(point_data + 3);
       dev->last_id = point_data[0];
 
-      /* The 7-inch adapter is mounted in the orientation used by the
-       * reference BSP, which mirrors both axes.
-       */
+      /* This panel's touch FPC orientation matches the display axes. */
 
       if (raw_x >= BOARD_VELAPOKA_LCD_WIDTH)
         {
@@ -117,8 +169,17 @@ static void gt911_report(FAR struct gt911_dev_s *dev, bool down,
           raw_y = BOARD_VELAPOKA_LCD_HEIGHT - 1;
         }
 
-      dev->last_x = BOARD_VELAPOKA_LCD_WIDTH - 1 - raw_x;
-      dev->last_y = BOARD_VELAPOKA_LCD_HEIGHT - 1 - raw_y;
+      x = raw_x;
+      y = raw_y;
+
+      if (dev->contact && dev->last_id == point_data[0] &&
+          dev->last_x == x && dev->last_y == y)
+        {
+          return;
+        }
+
+      dev->last_x = x;
+      dev->last_y = y;
     }
 
   point->id = dev->last_id;
@@ -148,8 +209,12 @@ static void gt911_worker(FAR void *arg)
 
   valid = (dev->buffer[0] & 0x80) != 0;
   points = dev->buffer[0] & 0x0f;
+  if (!valid)
+    {
+      goto queue_again;
+    }
 
-  if (valid && points > 0 && points <= GT911_MAX_POINTS)
+  if (points > 0 && points <= GT911_MAX_POINTS)
     {
       ret = gt911_read(dev, GT911_POINT_REG, &dev->buffer[1],
                        points * GT911_POINT_BYTES);
@@ -158,7 +223,7 @@ static void gt911_worker(FAR void *arg)
           gt911_report(dev, true, &dev->buffer[1]);
         }
     }
-  else if (dev->contact)
+  else if (points == 0 && dev->contact)
     {
       gt911_report(dev, false, NULL);
     }
@@ -184,7 +249,15 @@ queue_again:
 int velapoka_touchscreen_initialize(void)
 {
   FAR struct gt911_dev_s *dev = &g_gt911;
+  static const uint8_t addresses[] =
+  {
+    BOARD_VELAPOKA_TOUCH_ADDR,
+    BOARD_VELAPOKA_TOUCH_ALT_ADDR
+  };
   uint8_t product_id[4];
+  uint8_t config[5];
+  size_t i;
+  int retry;
   int ret;
 
   memset(dev, 0, sizeof(*dev));
@@ -194,15 +267,59 @@ int velapoka_touchscreen_initialize(void)
       return -ENODEV;
     }
 
-  ret = gt911_read(dev, GT911_PRODUCT_ID_REG, product_id,
-                   sizeof(product_id));
-  if (ret < 0)
+  /* INT and RESET are wired from the touch FPC to expansion-header GPIOs.
+   * Drive the GT911 address-selection sequence before probing each address.
+   */
+
+  up_mdelay(GT911_POWERON_DELAY_MS);
+  syslog(LOG_INFO, "GT911: I2C GPIO SCL%d=%d SDA%d=%d\n",
+         BOARD_VELAPOKA_I2C_SCL,
+         esp_gpioread(BOARD_VELAPOKA_I2C_SCL),
+         BOARD_VELAPOKA_I2C_SDA,
+         esp_gpioread(BOARD_VELAPOKA_I2C_SDA));
+  ret = -ENODEV;
+
+  for (i = 0; i < sizeof(addresses) / sizeof(addresses[0]); i++)
     {
-      syslog(LOG_ERR, "ERROR: GT911 not found at I2C address 0x%02x\n",
-             BOARD_VELAPOKA_TOUCH_ADDR);
-      return ret;
+      dev->addr = addresses[i];
+      gt911_select_address(dev->addr);
+
+      for (retry = 0; retry < GT911_PROBE_RETRIES; retry++)
+        {
+          ret = gt911_read(dev, GT911_PRODUCT_ID_REG, product_id,
+                           sizeof(product_id));
+          if (ret >= 0)
+            {
+              goto found;
+            }
+
+          up_mdelay(GT911_PROBE_DELAY_MS);
+        }
     }
 
+  syslog(LOG_ERR, "ERROR: GT911 not found at I2C addresses 0x%02x/0x%02x\n",
+         BOARD_VELAPOKA_TOUCH_ADDR, BOARD_VELAPOKA_TOUCH_ALT_ADDR);
+  gt911_scan_bus(dev);
+  return ret;
+
+found:
+
+  ret = gt911_read(dev, GT911_CONFIG_REG, config, sizeof(config));
+  if (ret >= 0)
+    {
+      syslog(LOG_INFO, "GT911: config=%u raw resolution=%ux%u\n",
+             config[0], gt911_get_le16(&config[1]),
+             gt911_get_le16(&config[3]));
+    }
+
+  ret = gt911_write_u8(dev, GT911_STATUS_REG, 0);
+  if (ret < 0)
+    {
+      syslog(LOG_WARNING, "WARNING: GT911 initial status clear failed: %d\n",
+             ret);
+    }
+
+  dev->lower.maxpoint = 1;
   ret = touch_register(&dev->lower, CONFIG_VELAPOKA_TOUCHSCREEN_PATH,
                        CONFIG_VELAPOKA_TOUCHSCREEN_SAMPLE_CACHES);
   if (ret < 0)
@@ -218,7 +335,7 @@ int velapoka_touchscreen_initialize(void)
     }
 
   velapoka_bsp_mark_ready(VELAPOKA_CAP_TOUCH);
-  syslog(LOG_INFO, "GT911: product %.4s registered at %s\n",
-         product_id, CONFIG_VELAPOKA_TOUCHSCREEN_PATH);
+  syslog(LOG_INFO, "GT911: product %.4s at 0x%02x registered at %s\n",
+         product_id, dev->addr, CONFIG_VELAPOKA_TOUCHSCREEN_PATH);
   return OK;
 }
