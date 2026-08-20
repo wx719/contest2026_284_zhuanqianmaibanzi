@@ -17,9 +17,11 @@ vendor/openvela/boards/contest2026_284_board
 - `configs/velapoka/defconfig`：VelaPoka 基础外设配置。
 - `src/velapoka_bsp.c`：控制 GPIO、共享软件 I2C 和状态节点。
 - `src/velapoka_gt911.c`：GT911 触控探测与轮询 lower-half。
+- `src/velapoka_display.c`：EK79007 MIPI-DSI first-light 与硬件彩条。
+- `docs/display-touch-bringup.md`：显示与触摸链路、调试和实板验收流程。
 - `scripts/Make.defs`：链接规则、simple boot 镜像生成和 `vela_nuttx.bin` 产物命名。
 - `upstream/nuttx/`：需要单独提交到公共 NuttX 仓的基线修复。
 
 构建、烧录和验证步骤见仓库根目录 [README](../../README.md)。
 
-当前只将 UART、控制 GPIO、I2C 和 GT911 纳入可运行基线。DSI、CSI、SDMMC、EMAC 和 PSRAM 只保留资源映射，不能把 HAL 源码存在等同于 NuttX 驱动就绪。
+当前 UART、控制 GPIO、I2C、GT911 和 MIPI-DSI 彩条链路已完成实板验证。CSI、SDMMC、EMAC 和 PSRAM 仍只保留资源映射，不能把 HAL 源码存在等同于 NuttX 驱动就绪。
