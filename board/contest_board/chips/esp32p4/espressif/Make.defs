@@ -20,6 +20,14 @@
 
 STORAGETMP = $(if $(wildcard $(NXTMPDIR)/.*),y,)
 
+# The simple-boot image is entered directly from ROM-loaded RAM segments.
+# Keep the imported ESP-IDF bootloader support from treating it as a second
+# stage flash application and repeating memory/MMU initialization.
+
+ifeq ($(CONFIG_ESPRESSIF_SIMPLE_BOOT),y)
+CFLAGS += -DCONFIG_APP_BUILD_TYPE_RAM=1
+endif
+
 # The start-up, "head", file. May be either a .S or a .c file.
 
 HEAD_ASRC   = esp_head.S
@@ -169,8 +177,9 @@ endif
 	GIT_DEPTH_PARAMETER = --depth=$(GIT_DEPTH)
 endif
 
-# When set USE_NXTMPDIR_ESP_REPO_DIRECTLY=y, will directly use esp-hal-3rdparty
-# under nxtmpdir without CHECK_COMMITSHA, reset, checkout and update.
+# When set USE_NXTMPDIR_ESP_REPO_DIRECTLY=y, copy esp-hal-3rdparty directly
+# from nxtmpdir.  The staged copy is still reset to ESP_HAL_3RDPARTY_VERSION
+# and patched below so cached and freshly cloned builds use the same baseline.
 
 USE_NXTMPDIR_ESP_REPO_DIRECTLY ?= y
 
@@ -194,16 +203,16 @@ endif
 chip/$(ESP_HAL_3RDPARTY_REPO):
 	$(Q) echo "Cloning Espressif HAL for 3rd Party Platforms"
 	$(Q) $(call CLONE_ESP_HAL_3RDPARTY_REPO)
-ifneq ($(USE_NXTMPDIR_ESP_REPO_DIRECTLY),y)
 	$(Q) echo "Espressif HAL for 3rd Party Platforms: ${ESP_HAL_3RDPARTY_VERSION}"
 	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) checkout --quiet $(ESP_HAL_3RDPARTY_VERSION)
+	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) reset --quiet --hard \
+		$(ESP_HAL_3RDPARTY_VERSION)
 	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) submodule --quiet update \
 		--init $(GIT_DEPTH_PARAMETER) components/mbedtls/mbedtls
 ifeq ($(CONFIG_ARCH_CHIP_ESP32P4_VENDOR),y)
 	$(Q) echo "Applying ESP32-P4 OpenVela compatibility patch"
 	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) apply \
 		../patches/0001-esp-hal-openvela-compat.patch
-endif
 endif
 ifeq ($(CONFIG_ESP_WIRELESS),y)
 ifneq ($(USE_NXTMPDIR_ESP_REPO_DIRECTLY),y)

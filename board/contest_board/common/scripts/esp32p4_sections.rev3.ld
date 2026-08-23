@@ -304,6 +304,19 @@ SECTIONS
     *libarch.a:cache_utils.*(.literal .literal.* .text .text.*)
     *libarch.a:memspi_host_driver.*(.literal .literal.* .text .text.*)
 
+    /* PSRAM and shared MSPI timing setup must remain executable while the
+     * flash interface is being reconfigured.  These placements mirror the
+     * ESP-IDF `noflash` mappings from esp_psram/linker.lf and
+     * esp_hw_support/mspi/linker.lf. */
+
+    *libarch.a:esp_psram_impl_ap_hex.*(.literal .literal.* .text .text.*)
+    *libarch.a:esp_psram.*(.literal .literal.* .text .text.*)
+    *libarch.a:esp_mmu_map.*(.literal .literal.* .text .text.*)
+    *libarch.a:mspi_timing_tuning.*(.literal .literal.* .text .text.*)
+    *libarch.a:mspi_timing_config.*(.literal .literal.* .text .text.*)
+    *libarch.a:mspi_timing_by_dqs.*(.literal .literal.* .text .text.*)
+    *libarch.a:mspi_timing_by_flash_delay.*(.literal .literal.* .text .text.*)
+
     *libc.a:sq_remlast.*(.literal .text .literal.* .text.*)
 
     esp_head.*(.literal .text .literal.* .text.*)
@@ -416,6 +429,17 @@ SECTIONS
     *libarch.a:*systimer_hal.*(.rodata .rodata.*)
     *libarch.a:*uart_hal_iram.*(.rodata .rodata.*)
     *libarch.a:*wdt_hal_iram.*(.rodata .rodata.*)
+
+    /* Read-only data referenced by the noflash PSRAM/MSPI code must also be
+     * available without accessing flash. */
+
+    *libarch.a:esp_psram_impl_ap_hex.*(.rodata .rodata.* .srodata .srodata.*)
+    *libarch.a:esp_psram.*(.rodata .rodata.* .srodata .srodata.*)
+    *libarch.a:esp_mmu_map.*(.rodata .rodata.* .srodata .srodata.*)
+    *libarch.a:mspi_timing_tuning.*(.rodata .rodata.* .srodata .srodata.*)
+    *libarch.a:mspi_timing_config.*(.rodata .rodata.* .srodata .srodata.*)
+    *libarch.a:mspi_timing_by_dqs.*(.rodata .rodata.* .srodata .srodata.*)
+    *libarch.a:mspi_timing_by_flash_delay.*(.rodata .rodata.* .srodata .srodata.*)
     *libarch.a:*bootloader_banner_wrap.*(.rodata .rodata.*)
     *libarch.a:*bootloader_init.*(.rodata .rodata.*)
     *libarch.a:*bootloader_common.*(.rodata .rodata.*)

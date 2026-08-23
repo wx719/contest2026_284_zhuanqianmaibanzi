@@ -1,0 +1,122 @@
+--- a/nuttx/src/platform/os.c
++++ b/nuttx/src/platform/os.c
+@@ -89,6 +89,29 @@
+ 
+ #define OS_PORT_MAX_DELAY 0xfffffffful
+ 
++struct nuttx_intr_handle_s
++{
++  struct irq_adpt adapter;
++  FAR volatile uint32_t *statusreg;
++  uint32_t statusmask;
++  int source;
++  int irq;
++  int cpuint;
++};
++
++static int esp_os_isr_adapter(int irq, FAR void *context, FAR void *arg)
++{
++  FAR struct nuttx_intr_handle_s *handle = arg;
++
++  if (handle->statusreg == NULL ||
++      ((*handle->statusreg & handle->statusmask) != 0))
++    {
++      handle->adapter.func(handle->adapter.arg);
++    }
++
++  return OK;
++}
++
+ /****************************************************************************
+  * Private Types
+  ****************************************************************************/
+@@ -355,9 +378,20 @@
+ 
+ esp_err_t esp_os_intr_free(intr_handle_t handle)
+ {
+-  (void)handle;
++  FAR struct nuttx_intr_handle_s *nuttx_handle =
++    (FAR struct nuttx_intr_handle_s *)handle;
+ 
+-  return ESP_ERR_NOT_SUPPORTED;
++  if (nuttx_handle == NULL)
++    {
++      return ESP_ERR_INVALID_ARG;
++    }
++
++  up_disable_irq(nuttx_handle->irq);
++  irq_detach(nuttx_handle->irq);
++  esp_teardown_irq(nuttx_handle->source, nuttx_handle->cpuint);
++  kmm_free(nuttx_handle);
++
++  return ESP_OK;
+ }
+ 
+ /****************************************************************************
+@@ -415,19 +449,57 @@
+                                         FAR void *arg,
+                                         FAR intr_handle_t *ret_handle)
+ {
+-  (void)source;
+-  (void)flags;
+-  (void)intrstatusreg;
+-  (void)intrstatusmask;
+-  (void)handler;
+-  (void)arg;
++  FAR struct nuttx_intr_handle_s *handle;
++  int type = ESP_IRQ_TRIGGER_LEVEL;
++  int ret;
++
++  if (handler == NULL || ret_handle == NULL)
++    {
++      return ESP_ERR_INVALID_ARG;
++    }
++
++  handle = kmm_zalloc(sizeof(*handle));
++  if (handle == NULL)
++    {
++      return ESP_ERR_NO_MEM;
++    }
++
++  handle->adapter.func = handler;
++  handle->adapter.arg = arg;
++  handle->statusreg = intrstatusreg != 0 ?
++    (FAR volatile uint32_t *)(uintptr_t)intrstatusreg : NULL;
++  handle->statusmask = intrstatusmask;
++  handle->source = source;
++  handle->irq = ESP_SOURCE2IRQ(source);
++
++  if ((flags & ESP_INTR_FLAG_IRAM) != 0)
++    {
++      type |= ESP_IRQ_IRAM;
++    }
++
++  handle->cpuint = esp_setup_irq(source, ESP_IRQ_PRIORITY_DEFAULT, type);
++  if (handle->cpuint < 0)
++    {
++      kmm_free(handle);
++      return ESP_ERR_NOT_FOUND;
++    }
++
++  ret = irq_attach(handle->irq, esp_os_isr_adapter, handle);
++  if (ret < 0)
++    {
++      esp_teardown_irq(source, handle->cpuint);
++      kmm_free(handle);
++      return esp_errno_to_esp_err(ret);
++    }
++
++  *ret_handle = (intr_handle_t)handle;
+ 
+-  if (ret_handle != NULL)
++  if ((flags & ESP_INTR_FLAG_INTRDISABLED) == 0)
+     {
+-      *ret_handle = NULL;
++      up_enable_irq(handle->irq);
+     }
+ 
+-  return ESP_ERR_NOT_SUPPORTED;
++  return ESP_OK;
+ }
+ 
+ /****************************************************************************

@@ -44,6 +44,79 @@ config ESPRESSIF_CHIP_SERIES
 	default "esp32p4" if ESPRESSIF_ESP32P4
 	default "unknown"
 
+menuconfig ESPRESSIF_SPIRAM
+	bool "External SPI RAM (SPIRAM)"
+	depends on ARCH_CHIP_ESP32P4_VENDOR
+	default n
+	---help---
+		Enable the ESP32-P4 external PSRAM controller and HAL support.
+
+if ESPRESSIF_SPIRAM
+
+config ESPRESSIF_SPIRAM_BOOT_INIT
+	bool "Initialize SPIRAM during early boot"
+	default y
+	---help---
+		Initialize and map external PSRAM before heap registration.
+
+config ESPRESSIF_SPIRAM_IGNORE_NOTFOUND
+	bool "Ignore SPIRAM not found"
+	depends on !ESPRESSIF_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
+	default n
+	---help---
+		Continue booting when the external PSRAM cannot be detected.
+
+config ESPRESSIF_SPIRAM_MEMTEST
+	bool "Run SPIRAM memory test at boot"
+	default n
+	---help---
+		Run a basic memory test before PSRAM is handed to NuttX.  Keep this
+		disabled for large PSRAM devices when using simple boot because the
+		early boot watchdog is still active during the test.
+
+config ESPRESSIF_SPIRAM_USE_8LINE_MODE
+	bool "Use x8 line mode"
+	default n
+	---help---
+		Use x8 mode instead of the board's default x16 AP Memory mode.
+
+config ESPRESSIF_SPIRAM_ECC_ENABLE
+	bool "Enable SPIRAM ECC"
+	default n
+	---help---
+		Reserve part of PSRAM for hardware error-correcting codes.
+
+choice ESPRESSIF_SPIRAM_SPEED
+	prompt "SPIRAM speed"
+	default ESPRESSIF_SPIRAM_SPEED_200M
+
+config ESPRESSIF_SPIRAM_SPEED_20M
+	bool "20 MHz"
+
+config ESPRESSIF_SPIRAM_SPEED_80M
+	bool "80 MHz"
+
+config ESPRESSIF_SPIRAM_SPEED_200M
+	bool "200 MHz"
+
+endchoice # ESPRESSIF_SPIRAM_SPEED
+
+config ESPRESSIF_SPIRAM_USER_HEAP
+	bool "Use SPIRAM as the NuttX user heap"
+	default y
+	depends on MM_KERNEL_HEAP
+	---help---
+		Use mapped PSRAM as the userspace heap while keeping the internal
+		SRAM heap for kernel and DMA allocations.
+
+config ESPRESSIF_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
+	bool "Allow .bss segment in external memory"
+	default n
+	---help---
+		Allow variables marked for external RAM to be placed in PSRAM.
+
+endif # ESPRESSIF_SPIRAM
+
 choice ESPRESSIF_FLASH
 	prompt "Flash Size"
 	default ESPRESSIF_FLASH_4M if ESPRESSIF_ESP32C3 || ESPRESSIF_ESP32C6 || ESPRESSIF_ESP32H2 || ESPRESSIF_ESP32P4
@@ -99,6 +172,14 @@ config ESPRESSIF_CPU_FREQ_40
 	---help---
 		Set the CPU frequency to 40 MHz.
 
+config ESPRESSIF_CPU_FREQ_100
+	bool "100 MHz"
+	depends on ARCH_CHIP_ESP32P4_VENDOR
+	---help---
+		Set the CPU frequency to 100 MHz. This is useful for board bring-up
+		and for systems whose power supply cannot sustain 400 MHz together
+		with external PSRAM.
+
 config ESPRESSIF_CPU_FREQ_48
 	bool "48 MHz"
 	depends on ESPRESSIF_ESP32H2
@@ -146,6 +227,7 @@ endchoice # ESPRESSIF_CPU_FREQ
 config ESPRESSIF_CPU_FREQ_MHZ
 	int
 	default 40 if ESPRESSIF_CPU_FREQ_40
+	default 100 if ESPRESSIF_CPU_FREQ_100
 	default 48 if ESPRESSIF_CPU_FREQ_48
 	default 64 if ESPRESSIF_CPU_FREQ_64
 	default 80 if ESPRESSIF_CPU_FREQ_80

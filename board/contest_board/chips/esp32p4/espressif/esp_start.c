@@ -39,7 +39,6 @@
 #include "esp_lowputc.h"
 #include "esp_start.h"
 
-#include "esp_rom_sys.h"
 #include "esp_clk_internal.h"
 #include "esp_private/rtc_clk.h"
 #include "esp_cpu.h"
@@ -52,7 +51,9 @@
 #include "hal/cache_ll.h"
 #include "hal/cache_hal.h"
 #include "hal/rwdt_ll.h"
+#include "hal/lpwdt_ll.h"
 #include "soc/ext_mem_defs.h"
+#include "soc/lp_wdt_reg.h"
 #include "soc/reg_base.h"
 #include "spi_flash_mmap.h"
 #include "rom/cache.h"
@@ -69,6 +70,7 @@
 
 #ifdef CONFIG_ESPRESSIF_SIMPLE_BOOT
 #include "esp_rom_serial_output.h"
+#include "rom/uart.h"
 #include "esp_app_format.h"
 #endif
 
@@ -76,6 +78,8 @@
 #include "bootloader_flash_priv.h"
 #include "esp_private/startup_internal.h"
 #include "esp_private/spi_flash_os.h"
+#include "esp_private/mspi_timing_tuning.h"
+#include "bootloader_flash_config.h"
 #ifdef CONFIG_ESPRESSIF_SPIRAM
 #  include "esp_psram.h"
 #  include "esp_private/esp_psram_extram.h"
@@ -482,6 +486,8 @@ void __esp_start(void)
 {
   esp_err_t ret;
 
+  ets_printf("P4BOOT:01 enter\n");
+
   esp_cpu_intr_set_ivt_addr(&_vector_table);
 
 #if SOC_INT_CLIC_SUPPORTED
@@ -500,11 +506,15 @@ void __esp_start(void)
   bootloader_clear_bss_section();
 
 #ifdef CONFIG_ESPRESSIF_SIMPLE_BOOT
+  ets_printf("P4BOOT:02 bootloader_init\n");
   if (bootloader_init() != 0)
     {
       ets_printf("Hardware init failed, aborting\n");
       while (true);
     }
+
+  ets_printf("P4BOOT:03 bootloader_ready\n");
+
 #endif
 
   /* Initialize the per CPU areas */
@@ -558,21 +568,82 @@ void __esp_start(void)
 
   esp_rtc_init();
 
+  ets_printf("P4BOOT:04 rtc_ready\n");
+
   esp_mspi_pin_init();
+
+  ets_printf("P4BOOT:05 mspi_pins_ready\n");
 
   /* Configure SPI Flash chip state */
 
+  bootloader_flash_update_id();
   spi_flash_init_chip_state();
+  mspi_timing_flash_tuning();
 
   esp_mmu_map_init();
 
+  ets_printf("P4BOOT:06 flash_mmu_ready\n");
+
+  /* Reserve the shared MSPI pins before PSRAM training.  This operation only
+   * updates the GPIO reservation mask, but executing it after AP-PSRAM
+   * training stalls on this simple-boot path.
+   */
+
+  esp_mspi_pin_reserve();
+
+  ets_printf("P4BOOT:06a mspi_pins_reserved\n");
+
+  /* bootloader_init() has already brought up the MSPI and CPLL.  Complete
+   * the application clock setup before enabling external RAM: changing the
+   * RTC/CPU clock tree after PSRAM has been mapped destabilizes the shared
+   * MSPI clock domain on this board.
+   */
+
+  esp_clk_init();
+
+  ets_printf("P4BOOT:07 clocks_ready\n");
+
+  /* The second-stage bootloader leaves the RTC watchdog enabled to guard
+   * application startup.  PSRAM training and mapping can exceed that early
+   * boot window, so hand the watchdog off before starting external RAM.
+   */
+
+  wdt_hal_context_t rwdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
+  wdt_hal_write_protect_disable(&rwdt_ctx);
+  wdt_hal_set_flashboot_en(&rwdt_ctx, false);
+  wdt_hal_disable(&rwdt_ctx);
+  wdt_hal_write_protect_enable(&rwdt_ctx);
+
+  /* The ROM/second-stage path also enables the LP analog Super WDT.  Its
+   * reset is reported as a full-chip/power-on reset rather than RWDT, so it
+   * must be handed off separately before the relatively long PSRAM setup.
+   */
+
+  REG_WRITE(LP_WDT_SWD_WPROTECT_REG, LP_WDT_SWD_WKEY_VALUE);
+  REG_SET_BIT(LP_WDT_SWD_CONFIG_REG, LP_WDT_SWD_DISABLE);
+  REG_WRITE(LP_WDT_SWD_WPROTECT_REG, 0);
+
+  ets_printf("P4BOOT:08 wdts_disabled\n");
+
 #ifdef CONFIG_ESPRESSIF_SPIRAM
+  ets_printf("P4BOOT:09 psram_chip_init\n");
   ret = esp_psram_chip_init();
   if (ret != ESP_OK)
     {
 #  ifndef CONFIG_ESPRESSIF_SPIRAM_IGNORE_NOTFOUND
       PANIC();
 #  endif
+    }
+
+  /* PSRAM training changes the shared MSPI timing environment.  Simple boot
+   * enters this path without the complete IDF mspi_init() wrapper, so restore
+   * the Flash timing while execution is still entirely in IRAM.  The next
+   * startup helper is XIP code and cannot run with stale Flash timing.
+   */
+
+  if (ret == ESP_OK)
+    {
+      mspi_timing_flash_tuning();
     }
 
 #  ifdef CONFIG_ESPRESSIF_SPIRAM_BOOT_INIT
@@ -585,17 +656,19 @@ void __esp_start(void)
           PANIC();
 #    endif
         }
+
+      /* The rev3 PSRAM mapping workaround can reset its controller after
+       * training.  Re-apply Flash timing at the final IRAM-to-XIP boundary.
+       */
+
+      if (ret == ESP_OK)
+        {
+          mspi_timing_flash_tuning();
+        }
+
     }
 #  endif
 #endif
-
-  /* Configures the CPU clock, RTC slow and fast clocks, and performs
-   * RTC slow clock calibration.
-   */
-
-  esp_clk_init();
-
-  esp_mspi_pin_reserve();
 
   bootloader_init_mem();
 
@@ -639,17 +712,6 @@ void __esp_start(void)
   esp_setup_syscall_table();
 
   showprogress("B");
-
-  /* The 2nd stage bootloader enables RTC WDT to monitor any issues that may
-   * prevent the startup sequence from finishing correctly. Hence disable it
-   * as NuttX is about to start.
-   */
-
-  wdt_hal_context_t rwdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
-  wdt_hal_write_protect_disable(&rwdt_ctx);
-  wdt_hal_set_flashboot_en(&rwdt_ctx, false);
-  wdt_hal_disable(&rwdt_ctx);
-  wdt_hal_write_protect_enable(&rwdt_ctx);
 
   showprogress("C");
 
