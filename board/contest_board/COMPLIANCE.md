@@ -38,7 +38,9 @@
 - [x] `/dev/velapoka` 区分“板载能力”与“本次启动已就绪能力”。
 - [x] GT911 缺失或探测失败只记录错误，不阻断 NSH。
 - [ ] VelaPoka 配置仍需连接 7 英寸屏后完成 GPIO/I2C/GT911 实板 smoke test。
-- [ ] MIPI-DSI、MIPI-CSI、SDMMC、EMAC 和 PSRAM 不在本阶段就绪范围。
+- [x] PSRAM 已识别并映射 32 MiB，且与 EMAC 同时启用时可正常启动。
+- [x] EMAC 已注册为 NuttX `eth0`，RMII/SMI、PHY 链路、ARP 与双向 ICMP 实板验证通过。
+- [ ] MIPI-CSI 和 SDMMC 仍未完成对应设备节点与实板 smoke test。
 
 2026-08-10 的 `velapoka` 构建已完成编译、链接和 `esptool.py v4.8.1` 打包：
 
@@ -59,3 +61,19 @@
 - [x] 三轮独立 USB-UART hard reset 均只出现 `CHIP_USB_UART_RESET`，随后直接进入 NSH；没有 LP/HP WDT 复位。
 
 ROM 显示的 SHA-256 comparison warning 来自 Espressif `--ram-only-header` simple boot 镜像不附加 digest；ROM 随后正常加载并启动，不属于烧录校验失败。
+
+## Ethernet 实板验收
+
+2026-08-24 使用清理移植期诊断日志后的 `velapoka` 固件完成验证：
+
+| 项目 | 结果 |
+| --- | --- |
+| NuttX 网络设备 | `eth0` 注册成功，eFuse MAC `e8:f6:0a:e3:a9:35` |
+| 链路状态 | `RUNNING`，MTU 1500 |
+| 静态 IPv4 | 开发板 `10.0.0.2/24`，Windows 主机 `10.0.0.1/24` |
+| 开发板 → 主机 | 10 发 10 收，0% 丢包 |
+| 主机 → 开发板 | 4 发 4 收，0% 丢包 |
+| PSRAM 共存 | 32 MiB PSRAM 初始化后 EMAC 正常注册和通信 |
+| 最终固件 | `vela_nuttx.bin`, SHA-256 `f4367e9dd670017cae3fc3f283b94dbe0157feddf2f5822742b7f1362b600c77` |
+
+本次结论覆盖静态 IPv4、ARP 和 ICMP 双向通信。DHCP、TCP/UDP 吞吐量、长时间压力以及应用层 HTTP REST 数据导出尚未纳入已验证范围。

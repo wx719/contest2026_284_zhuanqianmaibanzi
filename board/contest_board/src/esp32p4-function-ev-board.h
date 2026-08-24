@@ -83,6 +83,10 @@
 
 int esp_bringup(void);
 
+#ifdef CONFIG_ESPRESSIF_EMAC
+int board_emac_init(void);
+#endif
+
 #ifdef CONFIG_VELAPOKA_BSP
 int velapoka_bsp_initialize(void);
 #endif

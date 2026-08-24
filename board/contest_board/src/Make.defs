@@ -24,6 +24,10 @@ include $(TOPDIR)/Make.defs
 
 CSRCS = esp32p4_boot.c esp32p4_bringup.c
 
+ifeq ($(CONFIG_ESPRESSIF_EMAC),y)
+  CSRCS += esp32p4_ethernet.c
+endif
+
 ifeq ($(CONFIG_VELAPOKA_BSP),y)
   CSRCS += velapoka_bsp.c
 endif

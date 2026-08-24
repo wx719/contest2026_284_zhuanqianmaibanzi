@@ -24,4 +24,4 @@ vendor/openvela/boards/contest2026_284_board
 
 构建、烧录和验证步骤见仓库根目录 [README](../../README.md)。
 
-当前 UART、控制 GPIO、I2C、GT911 和 MIPI-DSI 彩条链路已完成实板验证。CSI、SDMMC、EMAC 和 PSRAM 仍只保留资源映射，不能把 HAL 源码存在等同于 NuttX 驱动就绪。
+当前 UART、控制 GPIO、I2C、GT911、MIPI-DSI 彩条、PSRAM 和 EMAC 链路已完成实板验证。其中 EMAC 已注册为 NuttX `eth0`，静态 IPv4 下与 Windows 主机双向 Ping 均为 0% 丢包。CSI 和 SDMMC 仍未完成对应设备节点与实板 smoke test，不能把 HAL 源码存在等同于 NuttX 驱动就绪。

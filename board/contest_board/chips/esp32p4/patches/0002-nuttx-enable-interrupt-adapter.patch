@@ -1,59 +1,146 @@
+diff --git a/nuttx/include/platform/os.h b/nuttx/include/platform/os.h
+index fad9d6a44d4..bfab02782ae 100644
+--- a/nuttx/include/platform/os.h
++++ b/nuttx/include/platform/os.h
+@@ -140,8 +140,13 @@ struct irq_adpt
+ 
+ struct esp_os_intr_handle_t
+ {
+-  FAR intr_handle_t *intr_handle;
++  CODE void (*handler)(FAR void *arg);
++  FAR void *arg;
++  uint32_t status_reg;
++  uint32_t status_mask;
++  int source;
+   int irq;
++  int cpuint;
+ };
+ 
+ typedef struct esp_os_intr_handle_t esp_os_intr_handle_t;
+diff --git a/nuttx/src/platform/os.c b/nuttx/src/platform/os.c
+index b5bd2363c27..994c7920e46 100644
 --- a/nuttx/src/platform/os.c
 +++ b/nuttx/src/platform/os.c
-@@ -89,6 +89,29 @@
+@@ -21,6 +21,7 @@
+ #include <clock/clock.h>
  
- #define OS_PORT_MAX_DELAY 0xfffffffful
+ #include <nuttx/config.h>
++#include <nuttx/arch.h>
+ #include <nuttx/mutex.h>
+ #include <nuttx/spinlock.h>
+ #include <nuttx/irq.h>
+@@ -36,6 +37,7 @@
+ #include "sdkconfig.h"
  
-+struct nuttx_intr_handle_s
+ #include "esp_irq.h"
++#include "esp_intr_alloc.h"
+ #ifdef CONFIG_PM
+ #include "espressif/esp_pm.h"
+ #endif
+@@ -339,25 +341,66 @@ static esp_err_t esp_os_queue_receive_generic(esp_os_queue_handle_t queue,
+  * Public Functions
+  ****************************************************************************/
+ 
+-/****************************************************************************
+- * Name: esp_os_intr_free
+- *
+- * Description:
+- *   Free an interrupt handler.
+- *
+- * Input Parameters:
+- *   handle - Interrupt handle.
+- *
+- * Returned Value:
+- *   ESP_ERR_NOT_SUPPORTED with the legacy NuttX interrupt allocator.
+- *
+- ****************************************************************************/
++static int esp_os_intr_adapter(int irq, FAR void *context, FAR void *arg)
 +{
-+  struct irq_adpt adapter;
-+  FAR volatile uint32_t *statusreg;
-+  uint32_t statusmask;
-+  int source;
-+  int irq;
-+  int cpuint;
-+};
++  FAR esp_os_intr_handle_t *handle = arg;
 +
-+static int esp_os_isr_adapter(int irq, FAR void *context, FAR void *arg)
-+{
-+  FAR struct nuttx_intr_handle_s *handle = arg;
-+
-+  if (handle->statusreg == NULL ||
-+      ((*handle->statusreg & handle->statusmask) != 0))
++  if (handle->status_reg == 0 ||
++      (*(volatile uint32_t *)(uintptr_t)handle->status_reg &
++       handle->status_mask) != 0)
 +    {
-+      handle->adapter.func(handle->adapter.arg);
++      handle->handler(handle->arg);
 +    }
 +
 +  return OK;
 +}
-+
- /****************************************************************************
-  * Private Types
-  ****************************************************************************/
-@@ -355,9 +378,20 @@
  
  esp_err_t esp_os_intr_free(intr_handle_t handle)
  {
 -  (void)handle;
-+  FAR struct nuttx_intr_handle_s *nuttx_handle =
-+    (FAR struct nuttx_intr_handle_s *)handle;
++  FAR esp_os_intr_handle_t *adapter = (FAR esp_os_intr_handle_t *)handle;
  
 -  return ESP_ERR_NOT_SUPPORTED;
-+  if (nuttx_handle == NULL)
++  if (adapter == NULL)
 +    {
 +      return ESP_ERR_INVALID_ARG;
 +    }
 +
-+  up_disable_irq(nuttx_handle->irq);
-+  irq_detach(nuttx_handle->irq);
-+  esp_teardown_irq(nuttx_handle->source, nuttx_handle->cpuint);
-+  kmm_free(nuttx_handle);
++  up_disable_irq(adapter->irq);
++  irq_detach(adapter->irq);
++  esp_teardown_irq(adapter->source, adapter->cpuint);
++  kmm_free(adapter);
++  return ESP_OK;
++}
 +
++/* The ESP timer implementation calls the public interrupt-control API
++ * directly after allocating through esp_os_intr_alloc().  The native IDF
++ * interrupt allocator is not linked on NuttX, so operate on the adapter
++ * handle created above.
++ */
++
++esp_err_t esp_intr_enable(intr_handle_t handle)
++{
++  FAR esp_os_intr_handle_t *adapter = (FAR esp_os_intr_handle_t *)handle;
++
++  if (adapter == NULL)
++    {
++      return ESP_ERR_INVALID_ARG;
++    }
++
++  up_enable_irq(adapter->irq);
++  return ESP_OK;
++}
++
++esp_err_t esp_intr_disable(intr_handle_t handle)
++{
++  FAR esp_os_intr_handle_t *adapter = (FAR esp_os_intr_handle_t *)handle;
++
++  if (adapter == NULL)
++    {
++      return ESP_ERR_INVALID_ARG;
++    }
++
++  up_disable_irq(adapter->irq);
 +  return ESP_OK;
  }
  
  /****************************************************************************
-@@ -415,19 +449,57 @@
+@@ -390,9 +433,8 @@ esp_err_t esp_os_intr_alloc(int source, int flags,
+  * Name: esp_os_intr_alloc_intrstatus
+  *
+  * Description:
+- *   The legacy NuttX interrupt allocator does not expose an IDF-compatible
+- *   interrupt handle.  Keep this optional HAL path explicitly unsupported
+- *   until the allocator is migrated as a whole.
++ *   Route an ESP peripheral source through the NuttX IRQ dispatcher and
++ *   retain enough state to support the IDF-compatible free operation.
+  *
+  * Input Parameters:
+  *   source         - Interrupt source.
+@@ -404,7 +446,7 @@ esp_err_t esp_os_intr_alloc(int source, int flags,
+  *   ret_handle     - Pointer to receive the interrupt handle.
+  *
+  * Returned Value:
+- *   ESP_ERR_NOT_SUPPORTED.
++ *   ESP_OK on success; an ESP error code on failure.
+  *
+  ****************************************************************************/
+ 
+@@ -415,19 +457,66 @@ esp_err_t esp_os_intr_alloc_intrstatus(int source, int flags,
                                          FAR void *arg,
                                          FAR intr_handle_t *ret_handle)
  {
@@ -63,56 +150,64 @@
 -  (void)intrstatusmask;
 -  (void)handler;
 -  (void)arg;
-+  FAR struct nuttx_intr_handle_s *handle;
-+  int type = ESP_IRQ_TRIGGER_LEVEL;
++  FAR esp_os_intr_handle_t *adapter;
++  irq_priority_t priority = ESP_IRQ_PRIORITY_DEFAULT;
++  int type = (flags & ESP_INTR_FLAG_EDGE) != 0 ?
++             ESP_IRQ_TRIGGER_EDGE : ESP_IRQ_TRIGGER_LEVEL;
++  int cpuint;
++  int irq;
 +  int ret;
 +
-+  if (handler == NULL || ret_handle == NULL)
++  if (handler == NULL || source < 0 || source >= ESP_NSOURCES)
 +    {
 +      return ESP_ERR_INVALID_ARG;
 +    }
-+
-+  handle = kmm_zalloc(sizeof(*handle));
-+  if (handle == NULL)
-+    {
-+      return ESP_ERR_NO_MEM;
-+    }
-+
-+  handle->adapter.func = handler;
-+  handle->adapter.arg = arg;
-+  handle->statusreg = intrstatusreg != 0 ?
-+    (FAR volatile uint32_t *)(uintptr_t)intrstatusreg : NULL;
-+  handle->statusmask = intrstatusmask;
-+  handle->source = source;
-+  handle->irq = ESP_SOURCE2IRQ(source);
 +
 +  if ((flags & ESP_INTR_FLAG_IRAM) != 0)
 +    {
 +      type |= ESP_IRQ_IRAM;
 +    }
 +
-+  handle->cpuint = esp_setup_irq(source, ESP_IRQ_PRIORITY_DEFAULT, type);
-+  if (handle->cpuint < 0)
++  for (int level = ESP_IRQ_PRIORITY_1; level <= ESP_IRQ_PRIORITY_7; level++)
 +    {
-+      kmm_free(handle);
-+      return ESP_ERR_NOT_FOUND;
++      if ((flags & (1 << level)) != 0)
++        {
++          priority = (irq_priority_t)level;
++          break;
++        }
 +    }
 +
-+  ret = irq_attach(handle->irq, esp_os_isr_adapter, handle);
++  adapter = kmm_zalloc(sizeof(*adapter));
++  if (adapter == NULL)
++    {
++      return ESP_ERR_NO_MEM;
++    }
++
++  irq = ESP_SOURCE2IRQ(source);
++  cpuint = esp_setup_irq(source, priority, type);
++
++  adapter->handler = handler;
++  adapter->arg = arg;
++  adapter->status_reg = intrstatusreg;
++  adapter->status_mask = intrstatusmask;
++  adapter->source = source;
++  adapter->irq = irq;
++  adapter->cpuint = cpuint;
++
++  ret = irq_attach(irq, esp_os_intr_adapter, adapter);
 +  if (ret < 0)
 +    {
-+      esp_teardown_irq(source, handle->cpuint);
-+      kmm_free(handle);
++      esp_teardown_irq(source, cpuint);
++      kmm_free(adapter);
 +      return esp_errno_to_esp_err(ret);
 +    }
 +
-+  *ret_handle = (intr_handle_t)handle;
++  up_enable_irq(irq);
  
--  if (ret_handle != NULL)
-+  if ((flags & ESP_INTR_FLAG_INTRDISABLED) == 0)
+   if (ret_handle != NULL)
      {
 -      *ret_handle = NULL;
-+      up_enable_irq(handle->irq);
++      *ret_handle = (intr_handle_t)adapter;
      }
  
 -  return ESP_ERR_NOT_SUPPORTED;

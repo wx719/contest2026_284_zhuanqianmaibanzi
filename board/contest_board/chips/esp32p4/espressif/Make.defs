@@ -150,6 +150,10 @@ ifeq ($(CONFIG_ESP_MCPWM),y)
 	CHIP_CSRCS += esp_mcpwm.c
 endif
 
+ifeq ($(CONFIG_ESPRESSIF_EMAC),y)
+	CHIP_CSRCS += esp_emac.c
+endif
+
 # Required for initialization hooks on common code
 
 LDFLAGS += -u esp_system_include_startup_funcs
@@ -213,6 +217,8 @@ ifeq ($(CONFIG_ARCH_CHIP_ESP32P4_VENDOR),y)
 	$(Q) echo "Applying ESP32-P4 OpenVela compatibility patch"
 	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) apply \
 		../patches/0001-esp-hal-openvela-compat.patch
+	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) apply \
+		../patches/0002-nuttx-enable-interrupt-adapter.patch
 endif
 ifeq ($(CONFIG_ESP_WIRELESS),y)
 ifneq ($(USE_NXTMPDIR_ESP_REPO_DIRECTLY),y)

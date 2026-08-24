@@ -320,6 +320,14 @@ int esp_bringup(void)
     }
 #endif
 
+#ifdef CONFIG_ESPRESSIF_EMAC
+  ret = board_emac_init();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Ethernet initialization failed: %d\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_SENSORS_BMP180
   /* Try to register BMP180 device in I2C0 */
 

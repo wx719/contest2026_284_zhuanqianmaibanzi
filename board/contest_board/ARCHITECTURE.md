@@ -19,9 +19,9 @@ VelaPoka 是面向电子装配场景的固定工位视觉检查终端，基于 E
 | MIPI-CSI    | 专用差分对 (2 lane)      | CSI          | ⬜ 待适配  |
 | SDMMC1      | GPIO39-44               | SDIO 4-bit   | ⬜ 待适配  |
 | SDMMC2      | GPIO45-50               | SDIO 4-bit   | ⬜ 待适配  |
-| Ethernet    | GPIO34,49,50,28-31,52   | RMII         | ⬜ 待适配  |
-| MDC/MDIO    | GPIO31/52               | MDIO         | ⬜ 待适配  |
-| PSRAM       | MSPI 专用               | Octal SPI    | ⬜ 待适配  |
+| Ethernet    | GPIO34,49,50,28-31,52   | RMII         | ✅ 已适配  |
+| MDC/MDIO    | GPIO31/52               | MDIO         | ✅ 已适配  |
+| PSRAM       | MSPI 专用               | Octal SPI    | ✅ 已适配  |
 | LDO CH3     | 内部                    | 2.5V (DSI)   | ⬜ 待适配  |
 | LDO CH4     | 内部                    | VDDIO (SD)   | ⬜ 待适配  |
 | WiFi/BT     | ESP32-C6-MINI-1         | UART         | 🔄 后期   |
@@ -64,7 +64,7 @@ VelaPoka 是面向电子装配场景的固定工位视觉检查终端，基于 E
 
 ## 适配路线图
 
-### Phase 1: PSRAM 使能 ⬅ 当前
+### Phase 1: PSRAM 使能 ✅
 - 目标：启用外部 PSRAM，为图像帧缓冲提供大内存
 - 工作：defconfig 添加 SPIRAM 配置
 - 验收：`cat /dev/velapoka` 显示 extern_ram_seg 有使用量
@@ -95,7 +95,7 @@ VelaPoka 是面向电子装配场景的固定工位视觉检查终端，基于 E
   - SD 卡探测 + FAT 文件系统挂载 `/mnt/sdcard`
 - 验收：文件读写测试通过
 
-### Phase 5: Ethernet
+### Phase 5: Ethernet ✅
 - 目标：10/100Mbps 有线网络
 - 工作：
   - RMII 引脚配置
@@ -103,6 +103,15 @@ VelaPoka 是面向电子装配场景的固定工位视觉检查终端，基于 E
   - NuttX netdev 注册
   - DHCP / 静态 IP 配置
 - 验收：ping 测试通过
+
+实板验收记录（2026-08-24）：
+
+- PHY 地址 1，复位 GPIO51；MAC 地址从 eFuse 正常读取。
+- NuttX `eth0` 注册成功，链路状态为 `RUNNING`。
+- 静态 IPv4：开发板 `10.0.0.2/24`，Windows 主机 `10.0.0.1/24`。
+- 开发板到主机 Ping 10/10、主机到开发板 Ping 4/4，双向均为 0% 丢包。
+- 清理移植期诊断日志后重新构建、烧录并完成相同双向 Ping 回归。
+- DHCP、吞吐量和长时间稳定性尚未作为本阶段验收结论。
 
 ### Phase 6: 应用层
 - 目标：完整视觉装配检查功能
