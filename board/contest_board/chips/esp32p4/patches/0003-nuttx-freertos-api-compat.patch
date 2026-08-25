@@ -1,0 +1,93 @@
+diff --git a/nuttx/include/freertos/FreeRTOS.h b/nuttx/include/freertos/FreeRTOS.h
+new file mode 100644
+index 00000000000..9211283f1da
+--- /dev/null
++++ b/nuttx/include/freertos/FreeRTOS.h
+@@ -0,0 +1,64 @@
++/****************************************************************************
++ * Minimal ESP-IDF FreeRTOS API compatibility for the NuttX OS adapter.
++ * SPDX-License-Identifier: Apache-2.0
++ ****************************************************************************/
++#pragma once
++
++#include "platform/os.h"
++#include "esp_private/critical_section.h"
++
++typedef esp_os_queue_handle_t QueueHandle_t;
++typedef OS_SPINLOCK_TYPE portMUX_TYPE;
++
++#define pdFALSE                 OS_FALSE
++#define pdTRUE                  OS_TRUE
++#define portTICK_PERIOD_MS      OS_TICK_PERIOD_MS
++#define portMUX_INITIALIZE(lock)      OS_SPINLOCK_INIT(lock)
++#define portENTER_CRITICAL(lock)      esp_os_enter_critical(lock)
++#define portEXIT_CRITICAL(lock)       esp_os_exit_critical(lock)
++#define portENTER_CRITICAL_ISR(lock)  esp_os_enter_critical_isr(lock)
++#define portEXIT_CRITICAL_ISR(lock)   esp_os_exit_critical_isr(lock)
++#define portYIELD_FROM_ISR()          OS_PORT_YIELD_FROM_ISR()
++
++static inline QueueHandle_t xQueueCreateWithCaps(size_t count,
++                                                 size_t item_size,
++                                                 uint32_t caps)
++{
++  return esp_os_queue_create_with_caps(count, item_size, caps);
++}
++
++static inline void vQueueDeleteWithCaps(QueueHandle_t queue)
++{
++  esp_os_queue_delete_with_caps(queue);
++}
++
++static inline BaseType_t xQueueSend(QueueHandle_t queue,
++                                    const void *item,
++                                    TickType_t ticks)
++{
++  return esp_os_queue_send(queue, (void *)item, ticks) == ESP_OK ?
++         pdTRUE : pdFALSE;
++}
++
++static inline BaseType_t xQueueSendFromISR(QueueHandle_t queue,
++                                           const void *item,
++                                           BaseType_t *hptw)
++{
++  return esp_os_queue_send_from_isr(queue, (void *)item, hptw) == ESP_OK ?
++         pdTRUE : pdFALSE;
++}
++
++static inline BaseType_t xQueueReceive(QueueHandle_t queue, void *item,
++                                       TickType_t ticks)
++{
++  return esp_os_queue_receive(queue, item, ticks) == ESP_OK ?
++         pdTRUE : pdFALSE;
++}
++
++static inline BaseType_t xQueueReceiveFromISR(QueueHandle_t queue,
++                                              void *item,
++                                              BaseType_t *hptw)
++{
++  return esp_os_queue_receive_from_isr(queue, item, hptw) == ESP_OK ?
++         pdTRUE : pdFALSE;
++}
+diff --git a/nuttx/include/freertos/task.h b/nuttx/include/freertos/task.h
+new file mode 100644
+index 00000000000..99c7d6076b1
+--- /dev/null
++++ b/nuttx/include/freertos/task.h
+@@ -0,0 +1,8 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++#include "freertos/FreeRTOS.h"
++
++static inline void vTaskDelay(TickType_t ticks)
++{
++  OS_TASK_DELAY(ticks);
++}
+diff --git a/nuttx/include/freertos/idf_additions.h b/nuttx/include/freertos/idf_additions.h
+new file mode 100644
+index 00000000000..8917e140cd4
+--- /dev/null
++++ b/nuttx/include/freertos/idf_additions.h
+@@ -0,0 +1,3 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++#include "freertos/FreeRTOS.h"

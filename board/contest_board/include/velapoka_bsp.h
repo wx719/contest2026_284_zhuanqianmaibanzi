@@ -51,4 +51,9 @@ int velapoka_bsp_initialize(void);
 int velapoka_touchscreen_initialize(void);
 #endif
 
+#ifdef CONFIG_VELAPOKA_CAMERA
+int velapoka_camera_initialize(void);
+int velapoka_camera_set_stream(bool enable);
+#endif
+
 #endif

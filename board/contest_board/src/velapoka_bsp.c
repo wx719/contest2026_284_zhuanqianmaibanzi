@@ -182,6 +182,15 @@ int velapoka_bsp_initialize(void)
     }
 #endif
 
+#ifdef CONFIG_VELAPOKA_CAMERA
+  ret = velapoka_camera_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_WARNING,
+             "WARNING: SC2336 camera probe failed: %d; continuing\n", ret);
+    }
+#endif
+
   syslog(LOG_INFO,
          "VelaPoka BSP: capabilities=%08lx ready=%08lx\n",
          (unsigned long)VELAPOKA_CAPABILITIES,

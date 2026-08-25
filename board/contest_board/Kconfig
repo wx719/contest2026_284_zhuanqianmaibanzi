@@ -43,6 +43,21 @@ config VELAPOKA_DISPLAY
 		the DSI hardware color-bar pattern.  This first-light path validates
 		the panel without requiring PSRAM framebuffer support.
 
+config VELAPOKA_CAMERA
+	bool "Enable AS-AG638A32M2-50 (SC2336) camera"
+	default n
+	depends on VELAPOKA_BSP
+	select DRIVERS_VIDEO
+	select VIDEO_STREAM
+	select SCHED_HPWORK
+	---help---
+		Enable bring-up of the SC2336 MIPI-CSI camera module fitted to the
+		Function EV Board.  The reference application uses two-lane RAW10
+		at 1280x720 and 30 frames per second.  The first bring-up stage
+		verifies the SCCB connection by reading PID 0xcb3a at address 0x30.
+		The sensor is registered as /dev/video0 using packed BGGR RAW10.
+		The CSI capability is marked ready after the first completed frame.
+
 if VELAPOKA_TOUCHSCREEN
 
 config VELAPOKA_TOUCHSCREEN_PATH
