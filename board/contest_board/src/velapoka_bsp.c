@@ -21,6 +21,10 @@
 #include "espressif/esp_i2c_bitbang.h"
 #include <arch/board/velapoka_bsp.h>
 
+#ifdef CONFIG_ESPRESSIF_SPIRAM
+#  include "esp_psram.h"
+#endif
+
 #define VELAPOKA_STATUS_PATH  "/dev/velapoka"
 
 static uint32_t g_velapoka_ready = VELAPOKA_CAP_UART;
@@ -30,18 +34,28 @@ static ssize_t velapoka_status_read(FAR struct file *filep,
                                     FAR char *buffer, size_t buflen)
 {
   char status[192];
+  size_t psram_size = 0;
   size_t available;
   size_t count;
   int len;
+
+#ifdef CONFIG_ESPRESSIF_SPIRAM
+  if (esp_psram_is_initialized())
+    {
+      psram_size = esp_psram_get_size();
+    }
+#endif
 
   len = snprintf(status, sizeof(status),
                  "{\"board\":\"ESP32-P4X-Function-EV-Board\","
                  "\"product\":\"VelaPoka\",\"bsp\":1,"
                  "\"capabilities\":\"0x%08lx\","
                  "\"ready\":\"0x%08lx\","
+                 "\"psram_size\":%lu,"
                  "\"lcd\":\"1024x600\",\"touch\":\"%s\"}\n",
                  (unsigned long)VELAPOKA_CAPABILITIES,
                  (unsigned long)g_velapoka_ready,
+                 (unsigned long)psram_size,
 #ifdef CONFIG_VELAPOKA_TOUCHSCREEN
                  CONFIG_VELAPOKA_TOUCHSCREEN_PATH
 #else
@@ -122,6 +136,13 @@ int velapoka_lcd_reset(void)
 int velapoka_bsp_initialize(void)
 {
   int ret;
+
+#ifdef CONFIG_ESPRESSIF_SPIRAM
+  if (esp_psram_is_initialized())
+    {
+      velapoka_bsp_mark_ready(VELAPOKA_CAP_PSRAM);
+    }
+#endif
 
   /* Keep the backlight dark until a DSI framebuffer driver is ready. */
 

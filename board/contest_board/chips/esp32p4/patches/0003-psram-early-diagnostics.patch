@@ -1,0 +1,48 @@
+diff --git a/components/esp_psram/system_layer/esp_psram.c b/components/esp_psram/system_layer/esp_psram.c
+index 6fbf1e5bf0d..df4058c26f7 100644
+--- a/components/esp_psram/system_layer/esp_psram.c
++++ b/components/esp_psram/system_layer/esp_psram.c
+@@ -16,6 +16,7 @@
+ #include "esp_attr.h"
+ #include "esp_err.h"
+ #include "esp_log.h"
++#include "esp32p4/rom/ets_sys.h"
+ #include "platform/os.h"
+ #include "esp_heap_caps_init.h"
+ #include "esp_psram.h"
+@@ -205,12 +206,16 @@ static void IRAM_ATTR esp_psram_p4_rev3_workaround(void)
+ 
+ static esp_err_t s_psram_chip_init(void)
+ {
++    ets_printf("P4PSRAM:01 chip_init enter\n");
+     if (s_psram_ctx.is_chip_initialised) {
++        ets_printf("P4PSRAM:01a already_initialized\n");
+         return ESP_ERR_INVALID_STATE;
+     }
+ 
+     esp_err_t ret = ESP_FAIL;
++    ets_printf("P4PSRAM:02 impl_enable enter\n");
+     ret = esp_psram_impl_enable();
++    ets_printf("P4PSRAM:03 impl_enable ret=%d\n", ret);
+     if (ret != ESP_OK) {
+ #if CONFIG_SPIRAM_IGNORE_NOTFOUND
+         ESP_EARLY_LOGE(TAG, "PSRAM enabled but initialization failed. Bailing out.");
+@@ -220,7 +225,10 @@ static esp_err_t s_psram_chip_init(void)
+     s_psram_ctx.is_chip_initialised = true;
+ 
+     uint32_t psram_physical_size = 0;
++    ets_printf("P4PSRAM:04 get_physical_size enter\n");
+     ret = esp_psram_impl_get_physical_size(&psram_physical_size);
++    ets_printf("P4PSRAM:05 get_physical_size ret=%d size=%u\n",
++               ret, (unsigned int)psram_physical_size);
+     assert(ret == ESP_OK);
+ 
+     PSRAM_EARLY_LOGI(TAG, "Found %" PRIu32 "MB PSRAM device", psram_physical_size / (1024 * 1024));
+@@ -232,6 +240,7 @@ static esp_err_t s_psram_chip_init(void)
+     ESP_EARLY_LOGI(TAG, "PSRAM initialized, cache is in low/high (2-core) mode.");
+ #endif
+ #endif
++    ets_printf("P4PSRAM:06 chip_init done\n");
+     return ESP_OK;
+ }
+ 

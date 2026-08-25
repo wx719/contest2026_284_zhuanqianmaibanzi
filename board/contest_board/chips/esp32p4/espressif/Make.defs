@@ -242,6 +242,13 @@ CFLAGS += -Wno-undef -Wno-unused-variable -fno-jump-tables -fno-tree-switch-conv
 
 CHIP_SERIES = $(patsubst "%",%,$(CONFIG_ESPRESSIF_CHIP_SERIES))
 
+# Keep clean/reconfigure targets usable when an old .config predates the
+# ESPRESSIF chip-series choice.  The custom chip directory is P4-only.
+
+ifeq ($(strip $(CHIP_SERIES)),)
+  CHIP_SERIES = esp32p4
+endif
+
 include chip/hal_${CHIP_SERIES}.mk
 
 ifeq ($(CONFIG_ESP_WIRELESS),y)
