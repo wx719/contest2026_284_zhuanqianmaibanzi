@@ -31,6 +31,7 @@
 #include <debug.h>
 
 #include <nuttx/spi/spi.h>
+#include <arch/board/board.h>
 
 #include "espressif/esp_gpio.h"
 
@@ -52,7 +53,24 @@ uint8_t esp_spi2_status(struct spi_dev_s *dev, uint32_t devid)
 {
   uint8_t status = 0;
 
+#ifdef CONFIG_VELAPOKA_SDCARD
+  if (devid == SPIDEV_MMCSD(0))
+    {
+      status |= SPI_STATUS_PRESENT;
+    }
+#endif
+
   return status;
+}
+
+void esp_spi2_select(struct spi_dev_s *dev, uint32_t devid, bool selected)
+{
+#ifdef CONFIG_VELAPOKA_SDCARD
+  if (devid == SPIDEV_MMCSD(0))
+    {
+      esp_gpiowrite(BOARD_VELAPOKA_SD_D3, !selected);
+    }
+#endif
 }
 
 #endif

@@ -58,6 +58,19 @@ config VELAPOKA_CAMERA
 		The sensor is registered as /dev/video0 using packed BGGR RAW10.
 		The CSI capability is marked ready after the first completed frame.
 
+config VELAPOKA_SDCARD
+	bool "Enable MicroSD card (SPI mode)"
+	default n
+	select ESPRESSIF_SPI_BITBANG
+	select MMCSD
+	select MMCSD_SPI
+	select FS_FAT
+	---help---
+		Register the on-board MicroSD socket as /dev/mmcsd0 using the
+		NuttX GPIO SPI lower half.
+		The wiring follows Espressif's official BSP: CLK=GPIO43,
+		MOSI/CMD=GPIO44, MISO/D0=GPIO39 and CS/D3=GPIO42.
+
 if VELAPOKA_TOUCHSCREEN
 
 config VELAPOKA_TOUCHSCREEN_PATH

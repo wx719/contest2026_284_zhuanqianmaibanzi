@@ -43,6 +43,10 @@
 
 #include "espressif/esp_start.h"
 
+#ifdef CONFIG_VELAPOKA_SDCARD
+int board_mmcsd_initialize(void);
+#endif
+
 #ifdef CONFIG_WATCHDOG
 #  include "espressif/esp_wdt.h"
 #endif
@@ -252,7 +256,7 @@ int esp_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_ESPRESSIF_SPI
+#ifdef CONFIG_ESPRESSIF_SPI_PERIPH
 #  ifdef CONFIG_ESPRESSIF_SPI_SLAVE
   ret = board_spislavedev_initialize(ESPRESSIF_SPI2);
   if (ret < 0)
@@ -268,14 +272,7 @@ int esp_bringup(void)
     }
 #  endif
 
-#  ifdef CONFIG_ESPRESSIF_SPI_BITBANG
-  ret = board_spidev_initialize(ESPRESSIF_SPI_BITBANG);
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: Failed to init spidev 3: %d\n", ret);
-    }
-#  endif /* CONFIG_ESPRESSIF_SPI_BITBANG */
-#endif /* CONFIG_ESPRESSIF_SPI */
+#endif /* CONFIG_ESPRESSIF_SPI_PERIPH */
 
 #ifdef CONFIG_ESPRESSIF_SPIFLASH
   ret = board_spiflash_init();
@@ -317,6 +314,18 @@ int esp_bringup(void)
     {
       syslog(LOG_ERR, "ERROR: VelaPoka BSP initialization failed: %d\n",
              ret);
+    }
+#endif
+
+#ifdef CONFIG_VELAPOKA_SDCARD
+  /* Initialize removable storage after the existing product BSP so adding
+   * the SD card cannot reorder display, touch, camera or shared-bus setup.
+   */
+
+  ret = board_mmcsd_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: Failed to initialize MicroSD: %d\n", ret);
     }
 #endif
 

@@ -38,6 +38,12 @@ ifeq ($(CONFIG_ESPRESSIF_SPI),y)
   CSRCS += esp_board_spi.c
 endif
 
+ifeq ($(CONFIG_VELAPOKA_SDCARD),y)
+  CSRCS += esp_board_mmcsd.c
+  CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)chip$(DELIM)esp-hal-3rdparty$(DELIM)components$(DELIM)esp_hw_support$(DELIM)ldo$(DELIM)include
+  CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)chip$(DELIM)esp-hal-3rdparty$(DELIM)components$(DELIM)esp_common$(DELIM)include
+endif
+
 ifeq ($(CONFIG_SPI_DRIVER),y)
   CSRCS += esp_board_spidev.c
 endif

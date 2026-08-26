@@ -80,6 +80,7 @@
 #define BOARD_VELAPOKA_SD_CLK            43
 #define BOARD_VELAPOKA_SD_CMD            44
 #define BOARD_VELAPOKA_SD_LDO_CHANNEL    4
+#define BOARD_VELAPOKA_SD_LDO_MV         3300
 
 #define BOARD_VELAPOKA_ETH_MDC           31
 #define BOARD_VELAPOKA_ETH_MDIO          52
