@@ -29,9 +29,11 @@
 
 #include "esp_cam_ctlr.h"
 #include "esp_cam_ctlr_csi.h"
+#include "esp_cache.h"
 #include "esp_ldo_regulator.h"
 #include "driver/isp_core.h"
 #include "hal/mipi_csi_brg_ll.h"
+#include "soc/dw_gdma_struct.h"
 #include "hal/mipi_csi_host_ll.h"
 
 #include <arch/board/board.h>
@@ -70,6 +72,7 @@ struct sc2336_dev_s
   atomic_uintptr_t next_buffer;
   FAR imgdata_capture_t capture;
   FAR void *capture_arg;
+  FAR void *completed_buffer;
   uint32_t completed_size;
   atomic_uint buffer_requests;
   atomic_uint frames_finished;
@@ -260,6 +263,11 @@ static void sc2336_frame_worker(FAR void *arg)
 
   if (priv->capture != NULL)
     {
+      /* The buffer was invalidated when it was queued and has not been read
+       * by the CPU while CSI owned it.  Do not invalidate a full RAW frame
+       * here: a 1.15 MiB cache operation concurrent with DSI can stall the
+       * cache controller just as the next frame begins. */
+
       gettimeofday(&timestamp, NULL);
       priv->capture(0, priv->completed_size, &timestamp,
                     priv->capture_arg);
@@ -294,8 +302,19 @@ static bool sc2336_frame_finished(esp_cam_ctlr_handle_t handle,
   if (trans->buffer != priv->scratch && priv->capture != NULL &&
       work_available(&priv->frame_work))
     {
+      priv->completed_buffer = trans->buffer;
       priv->completed_size = trans->received_size;
-      work_queue(HPWORK, &priv->frame_work, sc2336_frame_worker,
+      /* complete_capture() enters the V4L2 buffer manager and may queue the
+       * next capture buffer.  This is not an IRQ-latency operation: HPWORK
+       * has only a 2 KiB stack on this board and runs ahead of normal driver
+       * work.  Running it there can overflow the worker stack on the first
+       * completed frame and leave the shared DW-GDMA IRQ path wedged.
+       *
+       * Keep the CSI DMA callback minimal and hand the V4L2 completion to
+       * the normal 3 KiB low-priority worker instead.
+       */
+
+      work_queue(LPWORK, &priv->frame_work, sc2336_frame_worker,
                  priv, 0);
     }
 
@@ -304,7 +323,9 @@ static bool sc2336_frame_finished(esp_cam_ctlr_handle_t handle,
 
 static void sc2336_dump_csi_status(void)
 {
+  FAR dw_gdma_dev_t *dma = &DW_GDMA;
   uint32_t frame_error;
+  unsigned int channel;
 
   frame_error = MIPI_CSI_HOST.int_st_bndry_frame_fatal.val |
                 MIPI_CSI_HOST.int_st_seq_frame_fatal.val |
@@ -336,6 +357,30 @@ static void sc2336_dump_csi_status(void)
          (unsigned long)MIPI_CSI_HOST.phy_cal.val,
          (unsigned long)MIPI_CSI_HOST.phy_test_ctrl0.val,
          (unsigned long)MIPI_CSI_HOST.phy_test_ctrl1.val);
+
+  /* The bridge status above distinguishes MIPI reception from DMA progress.
+   * Dump every DW-GDMA channel before stop() clears the CSI channel so a
+   * timeout identifies the active channel and its exact P2M configuration. */
+
+  syslog(LOG_INFO, "SC2336 DW-GDMA: cfg=%08lx chen=%08lx int=%08lx\n",
+         (unsigned long)dma->cfg0.val,
+         (unsigned long)dma->chen0.val,
+         (unsigned long)dma->int_st0.val);
+  for (channel = 0; channel < 4; channel++)
+    {
+      syslog(LOG_INFO,
+             "SC2336 DW-GDMA ch%u: sar=%08lx dar=%08lx block=%08lx "
+             "ctl0=%08lx ctl1=%08lx cfg0=%08lx cfg1=%08lx int=%08lx\n",
+             channel,
+             (unsigned long)dma->ch[channel].sar0.val,
+             (unsigned long)dma->ch[channel].dar0.val,
+             (unsigned long)dma->ch[channel].block_ts0.val,
+             (unsigned long)dma->ch[channel].ctl0.val,
+             (unsigned long)dma->ch[channel].ctl1.val,
+             (unsigned long)dma->ch[channel].cfg0.val,
+             (unsigned long)dma->ch[channel].cfg1.val,
+             (unsigned long)dma->ch[channel].int_st0.val);
+    }
 }
 
 static int sc2336_data_init(FAR struct imgdata_s *data)
@@ -392,6 +437,14 @@ static int sc2336_data_init(FAR struct imgdata_s *data)
       return -EIO;
     }
 
+  /* SC2336 RAW10 uses the CSI bridge's HSync framing.  Keep it enabled even
+   * though the ISP is configured without CSI-2 line-start/line-end short
+   * packets below.  Disabling this bit makes the bridge discard the frame
+   * before DW-GDMA reaches its programmed full-frame transfer size.
+   */
+
+  mipi_csi_brg_ll_enable_has_hsync(&MIPI_CSI_BRIDGE, true);
+
   ret = esp_cam_ctlr_register_event_callbacks(priv->csi, &callbacks, priv);
   if (ret == ESP_OK)
     {
@@ -407,10 +460,9 @@ static int sc2336_data_init(FAR struct imgdata_s *data)
       return -EIO;
     }
 
-  /* The capture framework can stop and restart the lower half whenever its
-   * userspace buffer queue drains.  Keep the CSI/ISP shared-bridge owner for
-   * the whole imgdata session instead of allocating it on every restart.
-   */
+  /* CSI requires the ISP input-side routing configuration even when RAW10
+   * is DMAed unchanged.  A bypass processor programs that path and the
+   * no-line-sync framing; it must be created, but must not be enabled. */
 
   ret = esp_isp_new_processor(&isp_config, &priv->isp);
   if (ret != ESP_OK)
@@ -425,7 +477,7 @@ static int sc2336_data_init(FAR struct imgdata_s *data)
     }
 
   syslog(LOG_INFO,
-         "SC2336 CSI: ISP RAW10 bypass, line sync packets disabled\n");
+         "SC2336 CSI: RAW10 bypass, bridge HSync framing enabled\n");
 
   return OK;
 }
@@ -434,28 +486,21 @@ static int sc2336_data_uninit(FAR struct imgdata_s *data)
 {
   FAR struct sc2336_dev_s *priv = (FAR struct sc2336_dev_s *)data;
 
-  if (priv->csi != NULL)
+  if (priv->receiving)
     {
-      if (priv->receiving)
-        {
-          esp_cam_ctlr_stop(priv->csi);
-        }
-
-      if (priv->isp != NULL)
-        {
-          esp_isp_del_processor(priv->isp);
-          priv->isp = NULL;
-        }
-
-      esp_cam_ctlr_disable(priv->csi);
-      esp_cam_ctlr_del(priv->csi);
-      priv->csi = NULL;
+      esp_cam_ctlr_stop(priv->csi);
     }
 
-  work_cancel(HPWORK, &priv->frame_work);
-  free(priv->scratch);
-  priv->scratch = NULL;
+  /* CSI and DSI live in the same MIPI/DW-GDMA clock domain.  Keep the
+   * controller, ISP and DMA reservation alive for the board lifetime so a
+   * later open(/dev/video0) never resets that domain while DPI is scanning.
+   */
+
+  work_cancel(LPWORK, &priv->frame_work);
   priv->receiving = false;
+  priv->capture = NULL;
+  atomic_store(&priv->next_buffer, 0);
+  priv->completed_buffer = NULL;
   return OK;
 }
 
@@ -470,6 +515,15 @@ static int sc2336_data_set_buf(FAR struct imgdata_s *data,
       ((uintptr_t)addr & (SC2336_BUFFER_ALIGN - 1)) != 0)
     {
       return -EINVAL;
+    }
+
+  /* Invalidate a newly queued userspace buffer before CSI DMA writes it.
+   * The matching post-DMA invalidate happens in sc2336_frame_worker(). */
+
+  if (esp_cache_msync(addr, SC2336_FRAME_SIZE,
+                      ESP_CACHE_MSYNC_FLAG_DIR_M2C) != ESP_OK)
+    {
+      return -EIO;
     }
 
   atomic_store_explicit(&priv->next_buffer, (uintptr_t)addr,
@@ -510,6 +564,7 @@ static int sc2336_data_start(FAR struct imgdata_s *data,
                         memory_order_relaxed);
   atomic_store_explicit(&priv->frames_finished, 0,
                         memory_order_relaxed);
+
   ret = esp_cam_ctlr_start(priv->csi);
   if (ret != ESP_OK)
     {
@@ -675,6 +730,24 @@ int velapoka_camera_initialize(void)
   g_sc2336.sensor.frmintervals     = g_sc2336_frmival;
   g_sc2336.data.ops                = &g_sc2336_data_ops;
 
+  /* Reserve and configure CSI before the display creates its DW-GDMA
+   * channel.  CSI and DPI share the same DW-GDMA group: the first channel
+   * creation resets that group, while later channels only add their own
+   * register state.  Initializing CSI lazily after DPI can therefore leave
+   * its CSI-handshake channel unable to drain the bridge FIFO (the bridge
+   * reaches its almost-full threshold but no frame completes).  The data
+   * uninit path deliberately retains this controller for the board lifetime,
+   * so the open/close lifecycle does not re-order the two clients.
+   */
+
+  ret = IMGDATA_INIT(&g_sc2336.data);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: SC2336 CSI controller initialization failed: %d\n",
+             ret);
+      return ret;
+    }
+
   {
     FAR struct imgsensor_s *sensors[1] = {&g_sc2336.sensor};
 
@@ -700,6 +773,7 @@ int velapoka_camera_initialize(void)
 int velapoka_camera_set_stream(bool enable)
 {
   uint8_t stream;
+  unsigned int attempt;
   int ret;
 
   if (g_sc2336_i2c == NULL)
@@ -707,26 +781,38 @@ int velapoka_camera_set_stream(bool enable)
       return -ENODEV;
     }
 
-  ret = sc2336_writereg(g_sc2336_i2c, SC2336_REG_STREAM,
-                        enable ? 0x01 : 0x00);
+  /* The sensor needs a short settling interval after 0x0100 changes state.
+   * Do not sample the register immediately while the MIPI receiver is also
+   * being armed: a failed SCCB read previously made capture continue with an
+   * unverified stream state, which leaves CSI waiting forever for a frame. */
+
+  for (attempt = 0; attempt < 3; attempt++)
+    {
+      ret = sc2336_writereg(g_sc2336_i2c, SC2336_REG_STREAM,
+                            enable ? 0x01 : 0x00);
+      if (ret < 0)
+        {
+          continue;
+        }
+
+      nxsig_usleep(5000);
+      ret = sc2336_readreg(g_sc2336_i2c, SC2336_REG_STREAM, &stream);
+      if (ret == OK && stream == (enable ? 0x01 : 0x00))
+        {
+          syslog(LOG_INFO, "SC2336: stream %s, reg 0x0100=0x%02x\n",
+                 enable ? "on" : "off", stream);
+          return OK;
+        }
+    }
+
   if (ret < 0)
     {
+      syslog(LOG_ERR, "ERROR: SC2336 stream %s readback failed: %d\n",
+             enable ? "on" : "off", ret);
       return ret;
     }
 
-  ret = sc2336_readreg(g_sc2336_i2c, SC2336_REG_STREAM, &stream);
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: SC2336 stream readback failed: %d\n", ret);
-      return ret;
-    }
-
-  syslog(LOG_INFO, "SC2336: stream %s, reg 0x0100=0x%02x\n",
+  syslog(LOG_ERR, "ERROR: SC2336 stream %s readback=0x%02x\n",
          enable ? "on" : "off", stream);
-  if (stream != (enable ? 0x01 : 0x00))
-    {
-      return -EIO;
-    }
-
-  return OK;
+  return -EIO;
 }

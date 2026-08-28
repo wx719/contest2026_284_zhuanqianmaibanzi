@@ -44,6 +44,7 @@
 #include "esp_cache.h"
 #include "esp_clk_tree.h"
 #include "esp_irq.h"
+#include "esp_private/dw_gdma.h"
 #include "esp_private/periph_ctrl.h"
 #include "hal/mipi_dsi_hal.h"
 #include "hal/mipi_dsi_ll.h"
@@ -72,9 +73,7 @@
 
 #define MIPI_DSI_FIFO_TIMEOUT_MS  100
 
-/* DW-GDMA channel used for MEM → DSI bridge pixel streaming (MVP: ch0). */
-
-#define ESP_MIPI_DSI_DMA_CHAN     0
+#define ESP_MIPI_DSI_FB_QUEUE_DEPTH 2
 
 #ifndef CONFIG_ESPRESSIF_MIPI_DSI_BUS
 #  define CONFIG_ESPRESSIF_MIPI_DSI_BUS 0
@@ -105,13 +104,17 @@ struct esp_mipi_dsi_priv_s
   struct mipi_dsi_host host;         /* NuttX MIPI-DSI host (must be first) */
   mipi_dsi_hal_context_t hal;        /* Espressif MIPI-DSI HAL context */
   dw_gdma_hal_context_t dw_hal;      /* DW-GDMA HAL for FB→bridge streaming */
+  dw_gdma_channel_handle_t dma_chan; /* Reserved DW-GDMA channel */
   mutex_t lock;                      /* Serialize host / video / transfer */
   spinlock_t dmalock;                /* ISR vs video_stop/start */
 
   FAR struct mipi_dsi_device *device;   /* Attached panel device, or NULL */
   FAR void *fb;                         /* Bound framebuffer base, or NULL */
-  FAR dw_gdma_link_list_item_t *lli;    /* Cached LLI (CPU view) */
-  FAR dw_gdma_link_list_item_t *lli_nc; /* Non-cacheable LLI alias */
+  FAR void *pending_fb[ESP_MIPI_DSI_FB_QUEUE_DEPTH];
+  dw_gdma_link_list_handle_t dma_link;  /* Internal-memory DMA link list */
+  dw_gdma_lli_handle_t lli;             /* Non-cacheable LLI item */
+  esp_mipi_dsi_vsync_callback_t vsync_callback;
+  FAR void *vsync_arg;
 
   size_t fb_size;                    /* Bound framebuffer size in bytes */
   uint16_t dpi_h_res;                /* Active width from DPI config */
@@ -120,15 +123,21 @@ struct esp_mipi_dsi_priv_s
   soc_module_clk_t phy_cfg_clk_src;
   soc_module_clk_t dpi_clk_src;
 
-  int dma_cpuint;                    /* CPU IRQ allocated for DW-GDMA */
+  int dma_chan_id;                   /* Channel assigned by DW-GDMA core */
+  int bridge_cpuint;                 /* CPU IRQ allocated for DSI bridge */
   uint8_t num_data_lanes;            /* Active data lane count */
   uint8_t fb_bpp;                    /* Bound FB bits per pixel */
+  uint8_t pending_head;              /* Pending FB queue consumer */
+  uint8_t pending_tail;              /* Pending FB queue producer */
+  uint8_t pending_count;             /* Pending FB queue occupancy */
   float lane_bit_rate_mbps;          /* PHY lane bitrate (Mbps) */
   bool initialized;                  /* Host registered and ready */
   bool dpi_configured;               /* DPI timing programmed */
   bool fb_bound;                     /* Framebuffer bound to DW-GDMA */
   bool dma_enabled;                  /* Allow ISR to re-arm DW-GDMA */
   bool video_running;                /* Host in HS video mode */
+  bool video_started_once;           /* Bridge has streamed at least once */
+  bool underrun_pending;             /* Bridge needs task-context recovery */
 };
 
 /****************************************************************************
@@ -154,9 +163,15 @@ static int esp_mipi_dsi_read_short(FAR mipi_dsi_hal_context_t *hal,
                                    uint16_t header, FAR void *rx,
                                    uint16_t rx_len);
 static lcd_color_format_t esp_mipi_dsi_map_format(uint8_t format);
-static int IRAM_ATTR esp_mipi_dsi_dma_isr(int irq, FAR void *context,
-                                          FAR void *arg);
+static bool IRAM_ATTR esp_mipi_dsi_dma_callback(
+  dw_gdma_channel_handle_t chan,
+  FAR const dw_gdma_trans_done_event_data_t *event_data,
+  FAR void *arg);
+static int IRAM_ATTR esp_mipi_dsi_bridge_isr(int irq, FAR void *context,
+                                             FAR void *arg);
 static void IRAM_ATTR esp_mipi_dsi_dma_restart(
+    FAR struct esp_mipi_dsi_priv_s *priv);
+static bool IRAM_ATTR esp_mipi_dsi_switch_pending(
     FAR struct esp_mipi_dsi_priv_s *priv);
 static int esp_mipi_dsi_dma_setup(FAR struct esp_mipi_dsi_priv_s *priv);
 
@@ -183,7 +198,8 @@ static struct esp_mipi_dsi_priv_s g_esp_mipi_dsi =
   .phy_pllref_clk_src = SOC_MOD_CLK_INVALID,
   .phy_cfg_clk_src = SOC_MOD_CLK_INVALID,
   .dpi_clk_src = SOC_MOD_CLK_INVALID,
-  .dma_cpuint = -ENOMEM,
+  .dma_chan_id = -1,
+  .bridge_cpuint = -ENOMEM,
 };
 
 /****************************************************************************
@@ -208,70 +224,130 @@ static struct esp_mipi_dsi_priv_s g_esp_mipi_dsi =
 static void IRAM_ATTR esp_mipi_dsi_dma_restart(
     FAR struct esp_mipi_dsi_priv_s *priv)
 {
-  FAR dw_gdma_dev_t *dev = priv->dw_hal.dev;
-  FAR dw_gdma_link_list_item_t *lli_nc = priv->lli_nc;
+  dw_gdma_block_markers_t markers =
+  {
+    .is_valid = true,
+    .is_last = true,
+  };
 
-  if (dev == NULL || lli_nc == NULL || priv->lli == NULL)
+  if (priv->dma_chan == NULL || priv->dma_link == NULL ||
+      priv->lli == NULL)
     {
       return;
     }
 
-  /* Re-arm via NC alias (ESP-IDF mipi_dsi_dma_trans_done_cb). */
+  /* Match the ESP-IDF DPI callback.  dma_link owns an internal-memory LLI. */
 
-  dw_gdma_ll_lli_set_block_markers(lli_nc, false, true, true);
-  dw_gdma_ll_channel_set_link_list_master_port(dev, ESP_MIPI_DSI_DMA_CHAN,
-                                              DW_GDMA_LL_MASTER_PORT_MEMORY);
-  dw_gdma_ll_channel_set_link_list_head_addr(dev, ESP_MIPI_DSI_DMA_CHAN,
-                                             (uint32_t)(uintptr_t)priv->lli);
-  dw_gdma_ll_channel_enable(dev, ESP_MIPI_DSI_DMA_CHAN, true);
+  dw_gdma_lli_set_block_markers(priv->lli, markers);
+  dw_gdma_channel_use_link_list(priv->dma_chan, priv->dma_link);
+  dw_gdma_channel_enable_ctrl(priv->dma_chan, true);
 }
 
 /****************************************************************************
- * Name: esp_mipi_dsi_dma_isr
+ * Name: esp_mipi_dsi_switch_pending
  *
  * Description:
- *   DW-GDMA interrupt handler. On DMA_TFR_DONE, re-arm the link list so
- *   continuous framebuffer streaming continues while video is enabled.
+ *   Select the next queued framebuffer at a bridge VSYNC boundary.  The
+ *   caller must hold dmalock.
  *
  * Input Parameters:
- *   irq     - IRQ number (unused)
- *   context - Interrupt context (unused)
- *   arg     - Pointer to struct esp_mipi_dsi_priv_s
+ *   priv - Driver private state
  *
  * Returned Value:
- *   Zero (OK)
+ *   true when a queued framebuffer was selected; false otherwise.
  *
  ****************************************************************************/
 
-static int IRAM_ATTR esp_mipi_dsi_dma_isr(int irq, FAR void *context,
-                                          FAR void *arg)
+static bool IRAM_ATTR esp_mipi_dsi_switch_pending(
+    FAR struct esp_mipi_dsi_priv_s *priv)
 {
-  FAR struct esp_mipi_dsi_priv_s *priv =
-    (FAR struct esp_mipi_dsi_priv_s *)arg;
-  FAR dw_gdma_dev_t *dev;
-  irqstate_t flags;
-  uint32_t status;
-
-  UNUSED(irq);
-  UNUSED(context);
-
-  if (priv == NULL || priv->dw_hal.dev == NULL)
+  if (!priv->dma_enabled || priv->pending_count == 0)
     {
-      return OK;
+      return false;
     }
 
-  dev = priv->dw_hal.dev;
-  flags = spin_lock_irqsave(&priv->dmalock);
-  status = dw_gdma_ll_channel_get_intr_status(dev, ESP_MIPI_DSI_DMA_CHAN);
-  dw_gdma_ll_channel_clear_intr(dev, ESP_MIPI_DSI_DMA_CHAN, status);
+  priv->fb = priv->pending_fb[priv->pending_head];
+  priv->pending_head = (priv->pending_head + 1) %
+                       ESP_MIPI_DSI_FB_QUEUE_DEPTH;
+  priv->pending_count--;
+  dw_gdma_ll_lli_set_src_addr(priv->lli, (uint32_t)(uintptr_t)priv->fb);
+  dw_gdma_ll_lli_set_src_master_port(priv->lli, (intptr_t)priv->fb);
+  return true;
+}
 
-  if ((status & DW_GDMA_LL_CHANNEL_EVENT_DMA_TFR_DONE) != 0 &&
-      priv->dma_enabled)
+static bool IRAM_ATTR esp_mipi_dsi_dma_callback(
+  dw_gdma_channel_handle_t chan,
+  FAR const dw_gdma_trans_done_event_data_t *event_data,
+  FAR void *arg)
+{
+  FAR struct esp_mipi_dsi_priv_s *priv = arg;
+  irqstate_t flags;
+
+  UNUSED(chan);
+  UNUSED(event_data);
+
+  flags = spin_lock_irqsave(&priv->dmalock);
+  if (priv->dma_enabled)
     {
       esp_mipi_dsi_dma_restart(priv);
     }
 
   spin_unlock_irqrestore(&priv->dmalock, flags);
+  return false;
+}
+
+/****************************************************************************
+ * Name: esp_mipi_dsi_bridge_isr
+ *
+ * Description:
+ *   Switch queued framebuffers on the rev3 DSI bridge VSYNC event and
+ *   notify the framebuffer upper-half.
+ ****************************************************************************/
+
+static int IRAM_ATTR esp_mipi_dsi_bridge_isr(int irq, FAR void *context,
+                                             FAR void *arg)
+{
+  FAR struct esp_mipi_dsi_priv_s *priv = arg;
+  esp_mipi_dsi_vsync_callback_t callback;
+  FAR void *callback_arg;
+  irqstate_t flags;
+  uint32_t status;
+  bool frame_done;
+
+  UNUSED(irq);
+  UNUSED(context);
+
+  status = mipi_dsi_brg_ll_get_interrupt_status(priv->hal.bridge);
+  mipi_dsi_brg_ll_clear_interrupt_status(priv->hal.bridge, status);
+  if ((status & MIPI_DSI_BRG_LL_EVENT_UNDERRUN) != 0)
+    {
+      /* An underrun is level-like while the bridge remains starved.  Leaving
+       * it enabled creates an interrupt storm that can starve UART and the
+       * camera task.  Defer bridge recovery to the next framebuffer queue.
+       */
+
+      mipi_dsi_brg_ll_enable_interrupt(priv->hal.bridge,
+                                       MIPI_DSI_BRG_LL_EVENT_UNDERRUN,
+                                       false);
+      priv->underrun_pending = true;
+    }
+
+  if ((status & MIPI_DSI_BRG_LL_EVENT_VSYNC) == 0)
+    {
+      return OK;
+    }
+
+  flags = spin_lock_irqsave(&priv->dmalock);
+  frame_done = esp_mipi_dsi_switch_pending(priv);
+  callback = priv->vsync_callback;
+  callback_arg = priv->vsync_arg;
+  spin_unlock_irqrestore(&priv->dmalock, flags);
+
+  if (callback != NULL)
+    {
+      callback(callback_arg, frame_done);
+    }
+
   return OK;
 }
 
@@ -279,8 +355,7 @@ static int IRAM_ATTR esp_mipi_dsi_dma_isr(int irq, FAR void *context,
  * Name: esp_mipi_dsi_dma_setup
  *
  * Description:
- *   One-time DW-GDMA controller + channel-0 bring-up for MEM→DSI bridge
- *   pixel streaming, including interrupt registration.
+ *   Reserve and configure one DW-GDMA channel for MEM→DSI streaming.
  *
  * Input Parameters:
  *   priv - Driver private state
@@ -292,73 +367,83 @@ static int IRAM_ATTR esp_mipi_dsi_dma_isr(int irq, FAR void *context,
 
 static int esp_mipi_dsi_dma_setup(FAR struct esp_mipi_dsi_priv_s *priv)
 {
-  dw_gdma_hal_config_t hal_cfg;
+  dw_gdma_channel_alloc_config_t config =
+  {
+    .src =
+    {
+      .block_transfer_type = DW_GDMA_BLOCK_TRANSFER_LIST,
+      .role = DW_GDMA_ROLE_MEM,
+      .handshake_type = DW_GDMA_HANDSHAKE_HW,
+      .num_outstanding_requests = 5,
+    },
+    .dst =
+    {
+      .block_transfer_type = DW_GDMA_BLOCK_TRANSFER_LIST,
+      .role = DW_GDMA_ROLE_PERIPH_DSI,
+      .handshake_type = DW_GDMA_HANDSHAKE_HW,
+      .num_outstanding_requests = 2,
+    },
+    .flow_controller = DW_GDMA_FLOW_CTRL_SELF,
+    .chan_priority = 1,
+  };
+  dw_gdma_event_callbacks_t callbacks =
+  {
+    .on_full_trans_done = esp_mipi_dsi_dma_callback,
+  };
   FAR dw_gdma_dev_t *dev;
   int ret;
 
-  if (priv->dw_hal.dev != NULL)
+  if (priv->dma_chan != NULL)
     {
       return OK;
     }
 
-  memset(&hal_cfg, 0, sizeof(hal_cfg));
-
-  PERIPH_RCC_ATOMIC()
+  ret = dw_gdma_new_channel(&config, &priv->dma_chan);
+  if (ret != ESP_OK)
     {
-      dw_gdma_ll_enable_bus_clock(0, true);
-      dw_gdma_ll_reset_register(0);
+      verr("esp_mipi_dsi: DW-GDMA channel allocation failed: %d\n", ret);
+      return -EIO;
     }
 
-  dw_gdma_hal_init(&priv->dw_hal, &hal_cfg);
+  ret = dw_gdma_channel_get_id(priv->dma_chan, &priv->dma_chan_id);
+  if (ret != ESP_OK)
+    {
+      dw_gdma_del_channel(priv->dma_chan);
+      priv->dma_chan = NULL;
+      return -EIO;
+    }
+
+  priv->dw_hal.dev = DW_GDMA_LL_GET_HW(0);
   dev = priv->dw_hal.dev;
 
-  dw_gdma_ll_channel_set_trans_flow(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_trans_flow(dev, priv->dma_chan_id,
                                     DW_GDMA_ROLE_MEM,
                                     DW_GDMA_ROLE_PERIPH_DSI,
                                     DW_GDMA_FLOW_CTRL_SELF);
-  dw_gdma_ll_channel_set_src_multi_block_type(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_src_multi_block_type(dev, priv->dma_chan_id,
                                               DW_GDMA_BLOCK_TRANSFER_LIST);
-  dw_gdma_ll_channel_set_dst_multi_block_type(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_dst_multi_block_type(dev, priv->dma_chan_id,
                                               DW_GDMA_BLOCK_TRANSFER_LIST);
-  dw_gdma_ll_channel_set_src_handshake_interface(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_src_handshake_interface(dev, priv->dma_chan_id,
                                                  DW_GDMA_HANDSHAKE_HW);
-  dw_gdma_ll_channel_set_dst_handshake_interface(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_dst_handshake_interface(dev, priv->dma_chan_id,
                                                  DW_GDMA_HANDSHAKE_HW);
-  dw_gdma_ll_channel_set_dst_handshake_periph(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_dst_handshake_periph(dev, priv->dma_chan_id,
                                               DW_GDMA_ROLE_PERIPH_DSI);
-  dw_gdma_ll_channel_set_priority(dev, ESP_MIPI_DSI_DMA_CHAN, 1);
-  dw_gdma_ll_channel_set_src_outstanding_limit(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_priority(dev, priv->dma_chan_id, 1);
+  dw_gdma_ll_channel_set_src_outstanding_limit(dev, priv->dma_chan_id,
                                                5);
-  dw_gdma_ll_channel_set_dst_outstanding_limit(dev, ESP_MIPI_DSI_DMA_CHAN,
+  dw_gdma_ll_channel_set_dst_outstanding_limit(dev, priv->dma_chan_id,
                                                2);
-  dw_gdma_ll_channel_enable_intr_generation(dev, ESP_MIPI_DSI_DMA_CHAN,
-                                            UINT32_MAX, true);
-  dw_gdma_ll_channel_enable_intr_propagation(
-    dev, ESP_MIPI_DSI_DMA_CHAN, DW_GDMA_LL_CHANNEL_EVENT_DMA_TFR_DONE, true);
-  dw_gdma_ll_channel_clear_intr(dev, ESP_MIPI_DSI_DMA_CHAN, UINT32_MAX);
-
-  if (priv->dma_cpuint < 0)
+  ret = dw_gdma_channel_register_event_callbacks(priv->dma_chan,
+                                                  &callbacks, priv);
+  if (ret != ESP_OK)
     {
-      ret = esp_setup_irq(DW_GDMA_INTR_SOURCE,
-                          ESP_IRQ_PRIORITY_DEFAULT,
-                          ESP_IRQ_TRIGGER_LEVEL);
-      if (ret < 0)
-        {
-          verr("esp_mipi_dsi: DW-GDMA IRQ setup failed: %d\n",
-               ret);
-          return ret;
-        }
-
-      priv->dma_cpuint = ret;
-      ret = irq_attach(ESP_IRQ_DW_GDMA, esp_mipi_dsi_dma_isr, priv);
-      if (ret < 0)
-        {
-          esp_teardown_irq(DW_GDMA_INTR_SOURCE, priv->dma_cpuint);
-          priv->dma_cpuint = -ENOMEM;
-          return ret;
-        }
-
-      up_enable_irq(ESP_IRQ_DW_GDMA);
+      dw_gdma_del_channel(priv->dma_chan);
+      priv->dma_chan = NULL;
+      priv->dw_hal.dev = NULL;
+      priv->dma_chan_id = -1;
+      return -EIO;
     }
 
   return OK;
@@ -1424,9 +1509,35 @@ int esp_mipi_dsi_bind_framebuffer(FAR void *fb, size_t fb_size,
                                   uint8_t bpp)
 {
   FAR struct esp_mipi_dsi_priv_s *priv = &g_esp_mipi_dsi;
-  FAR dw_gdma_link_list_item_t *lli_nc;
+  dw_gdma_block_transfer_config_t transfer =
+  {
+    .src =
+    {
+      .burst_mode = DW_GDMA_BURST_MODE_INCREMENT,
+      .burst_items = DW_GDMA_BURST_ITEMS_512,
+      .burst_len = 16,
+      .width = DW_GDMA_TRANS_WIDTH_64,
+    },
+    .dst =
+    {
+      .addr = MIPI_DSI_BRG_MEM_BASE,
+      .burst_mode = DW_GDMA_BURST_MODE_FIXED,
+      .burst_items = DW_GDMA_BURST_ITEMS_256,
+      .burst_len = 16,
+      .width = DW_GDMA_TRANS_WIDTH_64,
+    },
+  };
+  dw_gdma_block_markers_t markers =
+  {
+    .is_valid = true,
+    .is_last = true,
+  };
+  dw_gdma_link_list_config_t link_config =
+  {
+    .num_items = 1,
+    .link_type = DW_GDMA_LINKED_LIST_TYPE_SINGLY,
+  };
   size_t expect;
-  uint32_t block_items;
   int ret;
 
   if (fb == NULL || fb_size == 0 || h_res == 0 || v_res == 0 ||
@@ -1466,59 +1577,33 @@ int esp_mipi_dsi_bind_framebuffer(FAR void *fb, size_t fb_size,
       return ret;
     }
 
-  if (priv->lli == NULL)
+  if (priv->dma_link == NULL)
     {
-      FAR dw_gdma_link_list_item_t *lli;
-
-      lli = kmm_memalign(DW_GDMA_LL_LINK_LIST_ALIGNMENT,
-                         sizeof(dw_gdma_link_list_item_t));
-      if (lli == NULL)
+      ret = dw_gdma_new_link_list(&link_config, &priv->dma_link);
+      if (ret != ESP_OK)
         {
           nxmutex_unlock(&priv->lock);
           return -ENOMEM;
         }
 
-      memset(lli, 0, sizeof(*lli));
-      priv->lli = lli;
-      priv->lli_nc =
-        (FAR dw_gdma_link_list_item_t *)ESP_MIPI_DSI_NC_ADDR(lli);
-
-#if SOC_CACHE_INTERNAL_MEM_VIA_L1CACHE
-      /* HAL dw_gdma_new_link_list: C2M|INVALIDATE once, then only
-       * touch the LLI via the non-cacheable alias.  A later C2M from the
-       * cached view would overwrite NC writes with stale zeros.
-       */
-
-      esp_cache_msync(lli, sizeof(*lli),
-                      ESP_CACHE_MSYNC_FLAG_DIR_C2M |
-                      ESP_CACHE_MSYNC_FLAG_INVALIDATE |
-                      ESP_CACHE_MSYNC_FLAG_UNALIGNED);
-#endif
+      priv->lli = dw_gdma_link_list_get_item(priv->dma_link, 0);
+      if (priv->lli == NULL)
+        {
+          dw_gdma_del_link_list(priv->dma_link);
+          priv->dma_link = NULL;
+          nxmutex_unlock(&priv->lock);
+          return -EIO;
+        }
     }
 
-  lli_nc = priv->lli_nc;
-  block_items = (uint32_t)((fb_size * 8) / 64);
-
-  /* Configure LLI via NC alias only: PSRAM FB → DSI bridge FIFO. */
-
-  dw_gdma_ll_lli_set_src_addr(lli_nc, (uint32_t)(uintptr_t)fb);
-  dw_gdma_ll_lli_set_dst_addr(lli_nc, MIPI_DSI_BRG_MEM_BASE);
-  dw_gdma_ll_lli_set_trans_block_size(lli_nc, block_items);
-  dw_gdma_ll_lli_set_src_master_port(lli_nc, (intptr_t)fb);
-  dw_gdma_ll_lli_set_dst_master_port(lli_nc, MIPI_DSI_BRG_MEM_BASE);
-  dw_gdma_ll_lli_set_src_trans_width(lli_nc, DW_GDMA_TRANS_WIDTH_64);
-  dw_gdma_ll_lli_set_dst_trans_width(lli_nc, DW_GDMA_TRANS_WIDTH_64);
-  dw_gdma_ll_lli_set_src_burst_items(lli_nc, DW_GDMA_BURST_ITEMS_512);
-  dw_gdma_ll_lli_set_dst_burst_items(lli_nc, DW_GDMA_BURST_ITEMS_256);
-  dw_gdma_ll_lli_set_src_burst_mode(lli_nc, DW_GDMA_BURST_MODE_INCREMENT);
-  dw_gdma_ll_lli_set_dst_burst_mode(lli_nc, DW_GDMA_BURST_MODE_FIXED);
-  dw_gdma_ll_lli_set_src_burst_len(lli_nc, 16);
-  dw_gdma_ll_lli_set_dst_burst_len(lli_nc, 16);
-  dw_gdma_ll_lli_set_link_list_master_port(lli_nc,
-                                           DW_GDMA_LL_MASTER_PORT_MEMORY);
-  dw_gdma_ll_lli_set_next_item_addr(lli_nc, 0);
-
-  dw_gdma_ll_lli_set_block_markers(lli_nc, false, true, true);
+  transfer.src.addr = (uint32_t)(uintptr_t)fb;
+  transfer.size = fb_size * 8 / 64;
+  if (dw_gdma_lli_config_transfer(priv->lli, &transfer) != ESP_OK ||
+      dw_gdma_lli_set_block_markers(priv->lli, markers) != ESP_OK)
+    {
+      nxmutex_unlock(&priv->lock);
+      return -EIO;
+    }
 
   esp_cache_msync(fb, fb_size,
                   ESP_CACHE_MSYNC_FLAG_DIR_C2M |
@@ -1579,6 +1664,99 @@ int esp_mipi_dsi_flush_framebuffer(FAR void *addr, size_t len)
 }
 
 /****************************************************************************
+ * Name: esp_mipi_dsi_queue_framebuffer
+ ****************************************************************************/
+
+int esp_mipi_dsi_queue_framebuffer(FAR void *fb, size_t fb_size)
+{
+  FAR struct esp_mipi_dsi_priv_s *priv = &g_esp_mipi_dsi;
+  irqstate_t flags;
+  int ret;
+
+  if (fb == NULL || fb_size == 0)
+    {
+      return -EINVAL;
+    }
+
+  ret = esp_mipi_dsi_flush_framebuffer(fb, fb_size);
+  if (ret < 0)
+    {
+      return ret;
+    }
+
+  flags = spin_lock_irqsave(&priv->dmalock);
+  if (!priv->fb_bound || fb_size != priv->fb_size)
+    {
+      ret = -EINVAL;
+    }
+  else if (!priv->dma_enabled)
+    {
+      /* A stopped stream can switch buffers immediately.  This lets camera
+       * preview finish CPU rendering and cache write-back before DSI starts
+       * reading PSRAM again.
+       */
+
+      priv->fb = fb;
+      dw_gdma_ll_lli_set_src_addr(priv->lli,
+                                  (uint32_t)(uintptr_t)priv->fb);
+      dw_gdma_ll_lli_set_src_master_port(priv->lli,
+                                         (intptr_t)priv->fb);
+      priv->pending_head = 0;
+      priv->pending_tail = 0;
+      priv->pending_count = 0;
+      ret = OK;
+    }
+  else if (priv->pending_count >= ESP_MIPI_DSI_FB_QUEUE_DEPTH)
+    {
+      ret = -EBUSY;
+    }
+  else
+    {
+      if (priv->underrun_pending)
+        {
+          /* The hardware cannot recover an already-blue DPI stream merely
+           * by clearing the status bit.  Restart the bridge at a complete
+           * framebuffer boundary, then re-arm one-shot underrun detection.
+           */
+
+          mipi_dsi_brg_ll_enable_dpi_output(priv->hal.bridge, false);
+          mipi_dsi_brg_ll_update_dpi_config(priv->hal.bridge);
+          mipi_dsi_brg_ll_clear_interrupt_status(
+            priv->hal.bridge, MIPI_DSI_BRG_LL_EVENT_UNDERRUN);
+          mipi_dsi_brg_ll_enable_dpi_output(priv->hal.bridge, true);
+          mipi_dsi_brg_ll_update_dpi_config(priv->hal.bridge);
+          priv->underrun_pending = false;
+        }
+
+      priv->pending_fb[priv->pending_tail] = fb;
+      priv->pending_tail = (priv->pending_tail + 1) %
+                           ESP_MIPI_DSI_FB_QUEUE_DEPTH;
+      priv->pending_count++;
+      ret = OK;
+    }
+
+  spin_unlock_irqrestore(&priv->dmalock, flags);
+  return ret;
+}
+
+/****************************************************************************
+ * Name: esp_mipi_dsi_set_vsync_callback
+ ****************************************************************************/
+
+int esp_mipi_dsi_set_vsync_callback(esp_mipi_dsi_vsync_callback_t callback,
+                                    FAR void *arg)
+{
+  FAR struct esp_mipi_dsi_priv_s *priv = &g_esp_mipi_dsi;
+  irqstate_t flags;
+
+  flags = spin_lock_irqsave(&priv->dmalock);
+  priv->vsync_callback = callback;
+  priv->vsync_arg = arg;
+  spin_unlock_irqrestore(&priv->dmalock, flags);
+  return OK;
+}
+
+/****************************************************************************
  * Name: esp_mipi_dsi_video_start
  *
  * Description:
@@ -1617,9 +1795,68 @@ int esp_mipi_dsi_video_start(void)
       return -EINVAL;
     }
 
+  if (priv->bridge_cpuint < 0)
+    {
+      ret = esp_setup_irq(DSI_BRIDGE_INTR_SOURCE,
+                          ESP_IRQ_PRIORITY_DEFAULT,
+                          ESP_IRQ_TRIGGER_LEVEL);
+      if (ret < 0)
+        {
+          nxmutex_unlock(&priv->lock);
+          return ret;
+        }
+
+      priv->bridge_cpuint = ret;
+      ret = irq_attach(ESP_IRQ_DSI_BRIDGE, esp_mipi_dsi_bridge_isr, priv);
+      if (ret < 0)
+        {
+          esp_teardown_irq(DSI_BRIDGE_INTR_SOURCE,
+                           priv->bridge_cpuint);
+          priv->bridge_cpuint = -ENOMEM;
+          nxmutex_unlock(&priv->lock);
+          return ret;
+        }
+
+      up_enable_irq(ESP_IRQ_DSI_BRIDGE);
+    }
+
   if (priv->fb_bound)
     {
       irqstate_t flags = spin_lock_irqsave(&priv->dmalock);
+
+      /* A snapshot capture releases the DSI DW-GDMA channel in
+       * esp_mipi_dsi_video_stop().  Re-acquire it here before re-arming the
+       * persistent link-list item.  CSI and DSI share this DMA group, so
+       * keeping an idle DSI channel allocated is not sufficient isolation
+       * for a CSI capture. */
+
+      if (priv->dma_chan == NULL)
+        {
+          spin_unlock_irqrestore(&priv->dmalock, flags);
+          ret = esp_mipi_dsi_dma_setup(priv);
+          if (ret < 0)
+            {
+              nxmutex_unlock(&priv->lock);
+              return ret;
+            }
+
+          flags = spin_lock_irqsave(&priv->dmalock);
+        }
+
+      if (priv->video_started_once)
+        {
+          /* Reset the bridge FIFO/state machine after the pattern-generator
+           * interval.  Clearing the underrun status alone does not recover
+           * the rev3 bridge once it has latched its blue fallback output.
+           */
+
+          mipi_dsi_brg_ll_enable_dpi_output(priv->hal.bridge, false);
+          mipi_dsi_brg_ll_enable(priv->hal.bridge, false);
+          mipi_dsi_brg_ll_clear_interrupt_status(priv->hal.bridge,
+                                                 UINT32_MAX);
+          mipi_dsi_brg_ll_enable(priv->hal.bridge, true);
+          mipi_dsi_brg_ll_update_dpi_config(priv->hal.bridge);
+        }
 
       priv->dma_enabled = true;
       esp_mipi_dsi_dma_restart(priv);
@@ -1627,11 +1864,28 @@ int esp_mipi_dsi_video_start(void)
     }
 
   mipi_dsi_host_ll_enable_video_mode(priv->hal.host, true);
+  mipi_dsi_host_ll_set_clock_lane_state(
+    priv->hal.host, MIPI_DSI_LL_CLOCK_LANE_STATE_AUTO);
   mipi_dsi_brg_ll_enable_dpi_output(priv->hal.bridge, true);
   mipi_dsi_brg_ll_update_dpi_config(priv->hal.bridge);
+  mipi_dsi_host_ll_dpi_set_pattern_type(priv->hal.host,
+                                        MIPI_DSI_PATTERN_NONE);
+  /* Do not enable the diagnostic underrun interrupt.  On ESP32-P4 rev3 the
+   * source can remain asserted after the bridge has gone blue, causing a
+   * level-triggered interrupt storm that starves all tasks.  VSYNC and the
+   * DW-GDMA completion interrupt provide the required runtime events.
+   */
+
   mipi_dsi_brg_ll_enable_interrupt(priv->hal.bridge,
-                                   MIPI_DSI_BRG_LL_EVENT_UNDERRUN, true);
+                                   MIPI_DSI_BRG_LL_EVENT_UNDERRUN, false);
+  mipi_dsi_brg_ll_clear_interrupt_status(priv->hal.bridge,
+                                         MIPI_DSI_BRG_LL_EVENT_UNDERRUN);
+  mipi_dsi_brg_ll_clear_interrupt_status(priv->hal.bridge,
+                                         MIPI_DSI_BRG_LL_EVENT_VSYNC);
+  mipi_dsi_brg_ll_enable_interrupt(priv->hal.bridge,
+                                   MIPI_DSI_BRG_LL_EVENT_VSYNC, true);
   priv->video_running = true;
+  priv->video_started_once = true;
   nxmutex_unlock(&priv->lock);
 
   vinfo("esp_mipi_dsi: video mode started%s\n",
@@ -1660,6 +1914,8 @@ int esp_mipi_dsi_test_pattern_start(void)
       return -EAGAIN;
     }
 
+  mipi_dsi_brg_ll_enable_interrupt(priv->hal.bridge,
+                                   MIPI_DSI_BRG_LL_EVENT_VSYNC, false);
   mipi_dsi_brg_ll_enable_dpi_output(priv->hal.bridge, false);
   mipi_dsi_brg_ll_update_dpi_config(priv->hal.bridge);
   mipi_dsi_host_ll_dpi_set_pattern_type(priv->hal.host,
@@ -1705,6 +1961,18 @@ int esp_mipi_dsi_video_stop(void)
       return -EAGAIN;
     }
 
+  /* Keep valid video packets on the DSI link while PSRAM DMA is paused.
+   * The host pattern generator does not consume PSRAM and prevents the
+   * EK79007/bridge from entering the unrecoverable blue underrun state.
+   */
+
+  mipi_dsi_brg_ll_enable_interrupt(priv->hal.bridge,
+                                   MIPI_DSI_BRG_LL_EVENT_VSYNC, false);
+  mipi_dsi_host_ll_dpi_set_pattern_type(priv->hal.host,
+                                        MIPI_DSI_PATTERN_BAR_VERTICAL);
+  mipi_dsi_brg_ll_enable_dpi_output(priv->hal.bridge, false);
+  mipi_dsi_brg_ll_update_dpi_config(priv->hal.bridge);
+
   /* Drop the enable flag before touching HW so a concurrent TFR_DONE
    * ISR cannot re-arm the channel after we disable it.
    */
@@ -1713,16 +1981,41 @@ int esp_mipi_dsi_video_stop(void)
   priv->dma_enabled = false;
   if (priv->dw_hal.dev != NULL)
     {
-      dw_gdma_ll_channel_enable(priv->dw_hal.dev, ESP_MIPI_DSI_DMA_CHAN,
+      dw_gdma_ll_channel_enable(priv->dw_hal.dev, priv->dma_chan_id,
                                 false);
       dw_gdma_ll_channel_clear_intr(priv->dw_hal.dev,
-                                    ESP_MIPI_DSI_DMA_CHAN, UINT32_MAX);
+                                    priv->dma_chan_id, UINT32_MAX);
     }
 
   spin_unlock_irqrestore(&priv->dmalock, flags);
 
-  mipi_dsi_brg_ll_enable_dpi_output(priv->hal.bridge, false);
-  mipi_dsi_host_ll_enable_video_mode(priv->hal.host, false);
+  /* Do not merely disable the channel for a camera snapshot.  Its shared
+   * interrupt registration and DMA state remain live until it is deleted,
+   * which can block the CSI peripheral-to-memory channel even though DPI
+   * pixel transfers are stopped.  The framebuffer link-list is retained and
+   * video_start recreates this channel before display resume. */
+
+  if (priv->dma_chan != NULL)
+    {
+      ret = dw_gdma_del_channel(priv->dma_chan);
+      if (ret != ESP_OK)
+        {
+          nxmutex_unlock(&priv->lock);
+          return -EIO;
+        }
+
+      priv->dma_chan = NULL;
+      priv->dma_chan_id = -1;
+      priv->dw_hal.dev = NULL;
+    }
+
+  /* Keep the DSI host and PHY in HS video mode.  Leaving video mode here
+   * makes the EK79007 lose link synchronization and it does not reliably
+   * recover on the next start (the visible symptom is a solid pink panel).
+   * Pausing the pixel DMA and DPI bridge output is sufficient to release
+   * PSRAM bandwidth for CSI.
+   */
+
   priv->video_running = false;
   nxmutex_unlock(&priv->lock);
   return OK;

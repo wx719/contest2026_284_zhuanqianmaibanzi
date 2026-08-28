@@ -1,0 +1,465 @@
+/****************************************************************************
+ * apps/app/velapoka/velapoka_ui.c
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ****************************************************************************/
+
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
+#include <nuttx/config.h>
+
+#include <errno.h>
+#include <inttypes.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <syslog.h>
+
+#include <lvgl/lvgl.h>
+
+#include "velapoka_ui.h"
+
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+#define VELAPOKA_SCREEN_WIDTH  1024
+#define VELAPOKA_SCREEN_HEIGHT 600
+#define VELAPOKA_PANEL_Y       12
+#define VELAPOKA_PANEL_HEIGHT  576
+#define VELAPOKA_LEFT_X        12
+#define VELAPOKA_LEFT_WIDTH    492
+#define VELAPOKA_RIGHT_X       516
+#define VELAPOKA_RIGHT_WIDTH   496
+
+#define COLOR_SCREEN           lv_color_hex(0x07111f)
+#define COLOR_PANEL            lv_color_hex(0x0d1b2a)
+#define COLOR_CARD             lv_color_hex(0x13263a)
+#define COLOR_CARD_ALT         lv_color_hex(0x0a1625)
+#define COLOR_BORDER           lv_color_hex(0x294158)
+#define COLOR_TEXT             lv_color_hex(0xe8f1f7)
+#define COLOR_MUTED            lv_color_hex(0x8fa6b8)
+#define COLOR_PRIMARY          lv_color_hex(0x18b6a4)
+#define COLOR_PRIMARY_DARK     lv_color_hex(0x0c756d)
+#define COLOR_SUCCESS          lv_color_hex(0x37d67a)
+#define COLOR_WARNING          lv_color_hex(0xffb340)
+#define COLOR_DANGER           lv_color_hex(0xff5d67)
+
+/****************************************************************************
+ * Private Types
+ ****************************************************************************/
+
+enum velapoka_action_e
+{
+  VELAPOKA_ACTION_ENROLL = 0,
+  VELAPOKA_ACTION_INSPECT,
+  VELAPOKA_ACTION_STOP
+};
+
+enum velapoka_threshold_step_e
+{
+  VELAPOKA_THRESHOLD_DECREASE = 0,
+  VELAPOKA_THRESHOLD_INCREASE
+};
+
+struct velapoka_ui_s
+{
+  lv_obj_t *status_label;
+  lv_obj_t *result_label;
+  lv_obj_t *result_detail;
+  lv_obj_t *threshold_label;
+  lv_obj_t *slider;
+  unsigned int action_count;
+};
+
+/****************************************************************************
+ * Private Data
+ ****************************************************************************/
+
+static struct velapoka_ui_s g_ui;
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
+
+static lv_obj_t *velapoka_panel_create(lv_obj_t *parent, int32_t x,
+                                       int32_t width)
+{
+  lv_obj_t *panel = lv_obj_create(parent);
+
+  lv_obj_remove_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(panel, x, VELAPOKA_PANEL_Y);
+  lv_obj_set_size(panel, width, VELAPOKA_PANEL_HEIGHT);
+  lv_obj_set_style_radius(panel, 18, 0);
+  lv_obj_set_style_bg_color(panel, COLOR_PANEL, 0);
+  lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(panel, 1, 0);
+  lv_obj_set_style_border_color(panel, COLOR_BORDER, 0);
+  lv_obj_set_style_pad_all(panel, 0, 0);
+  return panel;
+}
+
+static lv_obj_t *velapoka_card_create(lv_obj_t *parent, int32_t x,
+                                      int32_t y, int32_t width,
+                                      int32_t height)
+{
+  lv_obj_t *card = lv_obj_create(parent);
+
+  lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(card, x, y);
+  lv_obj_set_size(card, width, height);
+  lv_obj_set_style_radius(card, 12, 0);
+  lv_obj_set_style_bg_color(card, COLOR_CARD, 0);
+  lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(card, 1, 0);
+  lv_obj_set_style_border_color(card, COLOR_BORDER, 0);
+  lv_obj_set_style_pad_all(card, 0, 0);
+  return card;
+}
+
+static lv_obj_t *velapoka_label_create(lv_obj_t *parent, const char *text,
+                                       int32_t x, int32_t y,
+                                       lv_color_t color)
+{
+  lv_obj_t *label = lv_label_create(parent);
+
+  lv_label_set_text(label, text);
+  lv_obj_set_pos(label, x, y);
+  lv_obj_set_style_text_color(label, color, 0);
+  return label;
+}
+
+static void velapoka_button_style(lv_obj_t *button, lv_color_t color)
+{
+  lv_obj_set_style_radius(button, 10, 0);
+  lv_obj_set_style_bg_color(button, color, 0);
+  lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(button, 0, 0);
+  lv_obj_set_style_shadow_width(button, 0, 0);
+  lv_obj_set_style_bg_color(button, lv_color_lighten(color, LV_OPA_20),
+                            LV_STATE_PRESSED);
+}
+
+static void velapoka_status_set(const char *status, lv_color_t color)
+{
+  lv_label_set_text_fmt(g_ui.status_label, "SYSTEM  %s", status);
+  lv_obj_set_style_text_color(g_ui.status_label, color, 0);
+}
+
+static void velapoka_action_event(lv_event_t *event)
+{
+  enum velapoka_action_e action =
+    (enum velapoka_action_e)(uintptr_t)lv_event_get_user_data(event);
+
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED)
+    {
+      return;
+    }
+
+  g_ui.action_count++;
+  switch (action)
+    {
+      case VELAPOKA_ACTION_ENROLL:
+        velapoka_status_set("CAPTURE", COLOR_WARNING);
+        lv_label_set_text(g_ui.result_label, "SAMPLE READY");
+        lv_label_set_text_fmt(g_ui.result_detail,
+                              "Touch event #%u  |  waiting for camera",
+                              g_ui.action_count);
+        syslog(LOG_INFO, "VelaPoka UI: enroll button clicked (%u)\n",
+               g_ui.action_count);
+        break;
+
+      case VELAPOKA_ACTION_INSPECT:
+        velapoka_status_set("INSPECT", COLOR_PRIMARY);
+        lv_label_set_text(g_ui.result_label, "PASS");
+        lv_label_set_text_fmt(g_ui.result_detail,
+                              "Score 96.4  |  static first-light #%u",
+                              g_ui.action_count);
+        syslog(LOG_INFO, "VelaPoka UI: inspect button clicked (%u)\n",
+               g_ui.action_count);
+        break;
+
+      case VELAPOKA_ACTION_STOP:
+        velapoka_status_set("STOPPED", COLOR_DANGER);
+        lv_label_set_text(g_ui.result_label, "STOPPED");
+        lv_label_set_text_fmt(g_ui.result_detail,
+                              "Touch event #%u  |  press Inspect to resume",
+                              g_ui.action_count);
+        syslog(LOG_INFO, "VelaPoka UI: stop button clicked (%u)\n",
+               g_ui.action_count);
+        break;
+
+      default:
+        break;
+    }
+}
+
+static lv_obj_t *velapoka_button_create(lv_obj_t *parent, const char *text,
+                                        int32_t x, lv_color_t color,
+                                        enum velapoka_action_e action)
+{
+  lv_obj_t *button = lv_button_create(parent);
+  lv_obj_t *label;
+
+  lv_obj_set_pos(button, x, 292);
+  lv_obj_set_size(button, 140, 54);
+  velapoka_button_style(button, color);
+  lv_obj_add_event_cb(button, velapoka_action_event, LV_EVENT_CLICKED,
+                      (FAR void *)(uintptr_t)action);
+
+  label = lv_label_create(button);
+  lv_label_set_text(label, text);
+  lv_obj_set_style_text_color(label, COLOR_TEXT, 0);
+  lv_obj_center(label);
+  return button;
+}
+
+static void velapoka_slider_event(lv_event_t *event)
+{
+  int32_t value = lv_slider_get_value(g_ui.slider);
+
+  lv_label_set_text_fmt(g_ui.threshold_label, "Threshold  %" PRId32 "%%",
+                        value);
+
+  if (lv_event_get_code(event) == LV_EVENT_RELEASED)
+    {
+      velapoka_status_set("READY", COLOR_SUCCESS);
+      syslog(LOG_INFO, "VelaPoka UI: threshold=%" PRId32 "%%\n", value);
+    }
+}
+
+static void velapoka_threshold_step_event(lv_event_t *event)
+{
+  enum velapoka_threshold_step_e action =
+    (enum velapoka_threshold_step_e)(uintptr_t)
+      lv_event_get_user_data(event);
+  int32_t value;
+
+  if (lv_event_get_code(event) != LV_EVENT_CLICKED)
+    {
+      return;
+    }
+
+  value = lv_slider_get_value(g_ui.slider);
+  value += action == VELAPOKA_THRESHOLD_INCREASE ? 1 : -1;
+  lv_slider_set_value(g_ui.slider, value, LV_ANIM_OFF);
+  value = lv_slider_get_value(g_ui.slider);
+  lv_label_set_text_fmt(g_ui.threshold_label, "Threshold  %" PRId32 "%%",
+                        value);
+  syslog(LOG_INFO, "VelaPoka UI: threshold=%" PRId32 "%%\n", value);
+}
+
+static lv_obj_t *velapoka_threshold_button_create(
+  lv_obj_t *parent, const char *text, int32_t x,
+  enum velapoka_threshold_step_e action)
+{
+  lv_obj_t *button = lv_button_create(parent);
+  lv_obj_t *label;
+
+  lv_obj_set_pos(button, x, 235);
+  lv_obj_set_size(button, 34, 34);
+  velapoka_button_style(button, COLOR_PRIMARY_DARK);
+  lv_obj_add_event_cb(button, velapoka_threshold_step_event,
+                      LV_EVENT_CLICKED, (FAR void *)(uintptr_t)action);
+
+  label = lv_label_create(button);
+  lv_label_set_text(label, text);
+  lv_obj_set_style_text_color(label, COLOR_TEXT, 0);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+  lv_obj_center(label);
+  return button;
+}
+
+static void velapoka_device_badge(lv_obj_t *parent, const char *name,
+                                  int32_t x, bool online)
+{
+  lv_obj_t *dot = lv_obj_create(parent);
+  lv_obj_t *label;
+
+  lv_obj_remove_style_all(dot);
+  lv_obj_set_pos(dot, x, 62);
+  lv_obj_set_size(dot, 9, 9);
+  lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(dot, online ? COLOR_SUCCESS : COLOR_DANGER, 0);
+  lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+
+  label = velapoka_label_create(parent, name, x + 14, 57, COLOR_MUTED);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+}
+
+static void velapoka_left_create(lv_obj_t *screen, bool touch_online)
+{
+  lv_obj_t *panel = velapoka_panel_create(screen, VELAPOKA_LEFT_X,
+                                          VELAPOKA_LEFT_WIDTH);
+  lv_obj_t *label;
+  lv_obj_t *card;
+
+  label = velapoka_label_create(panel, "VelaPoka", 24, 18, COLOR_TEXT);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
+  label = velapoka_label_create(panel, "VISUAL ASSEMBLY INSPECTOR",
+                                25, 52, COLOR_MUTED);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+
+  g_ui.status_label = velapoka_label_create(panel, "SYSTEM  READY",
+                                             270, 29, COLOR_SUCCESS);
+  lv_obj_set_width(g_ui.status_label, 204);
+  lv_label_set_long_mode(g_ui.status_label, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_align(g_ui.status_label, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_font(g_ui.status_label, &lv_font_montserrat_16, 0);
+
+  card = velapoka_card_create(panel, 18, 86, 456, 102);
+  label = velapoka_label_create(card, "DEVICE STATUS", 16, 13, COLOR_TEXT);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+  velapoka_device_badge(card, "CAMERA", 16, true);
+  velapoka_device_badge(card, "DISPLAY", 126, true);
+  velapoka_device_badge(card, "TOUCH", 244, touch_online);
+  velapoka_device_badge(card, "SD", 344, true);
+
+  label = velapoka_label_create(panel, "Current sample", 22, 208,
+                                COLOR_MUTED);
+  label = velapoka_label_create(panel, "Connector Standard A-01", 142, 205,
+                                COLOR_TEXT);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+
+  g_ui.threshold_label = velapoka_label_create(panel, "Threshold  18%",
+                                                22, 247, COLOR_TEXT);
+  velapoka_threshold_button_create(panel, "-", 142,
+                                   VELAPOKA_THRESHOLD_DECREASE);
+  g_ui.slider = lv_slider_create(panel);
+  lv_obj_set_pos(g_ui.slider, 190, 244);
+  lv_obj_set_size(g_ui.slider, 214, 16);
+  lv_slider_set_range(g_ui.slider, 5, 40);
+  lv_slider_set_value(g_ui.slider, 18, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(g_ui.slider, COLOR_BORDER, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(g_ui.slider, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(g_ui.slider, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(g_ui.slider, COLOR_MUTED, LV_PART_MAIN);
+  lv_obj_set_style_radius(g_ui.slider, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(g_ui.slider, COLOR_PRIMARY,
+                            LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(g_ui.slider, LV_OPA_COVER, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(g_ui.slider, LV_RADIUS_CIRCLE,
+                          LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(g_ui.slider, COLOR_TEXT, LV_PART_KNOB);
+  lv_obj_set_style_bg_opa(g_ui.slider, LV_OPA_COVER, LV_PART_KNOB);
+  lv_obj_set_style_border_width(g_ui.slider, 3, LV_PART_KNOB);
+  lv_obj_set_style_border_color(g_ui.slider, COLOR_PRIMARY, LV_PART_KNOB);
+  lv_obj_set_style_pad_all(g_ui.slider, 5, LV_PART_KNOB);
+  lv_obj_add_event_cb(g_ui.slider, velapoka_slider_event,
+                      LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb(g_ui.slider, velapoka_slider_event,
+                      LV_EVENT_RELEASED, NULL);
+  velapoka_threshold_button_create(panel, "+", 418,
+                                   VELAPOKA_THRESHOLD_INCREASE);
+  label = velapoka_label_create(panel, "Drag slider or tap - / +",
+                                190, 271, COLOR_MUTED);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+
+  velapoka_button_create(panel, "Enroll Sample", 18, COLOR_PRIMARY_DARK,
+                         VELAPOKA_ACTION_ENROLL);
+  velapoka_button_create(panel, "Inspect", 176, COLOR_PRIMARY,
+                         VELAPOKA_ACTION_INSPECT);
+  velapoka_button_create(panel, "Stop", 334, COLOR_DANGER,
+                         VELAPOKA_ACTION_STOP);
+
+  card = velapoka_card_create(panel, 18, 365, 456, 126);
+  label = velapoka_label_create(card, "LATEST RESULT", 16, 13,
+                                COLOR_MUTED);
+  g_ui.result_label = velapoka_label_create(card, "READY", 16, 39,
+                                             COLOR_SUCCESS);
+  lv_obj_set_style_text_font(g_ui.result_label, &lv_font_montserrat_28, 0);
+  g_ui.result_detail = velapoka_label_create(card,
+                                              "Score --  |  Time -- ms",
+                                              16, 83, COLOR_TEXT);
+
+  label = velapoka_label_create(panel,
+                                "RECENT   #003 PASS   #002 FAIL   #001 PASS",
+                                22, 524, COLOR_MUTED);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+}
+
+static void velapoka_right_create(lv_obj_t *screen)
+{
+  lv_obj_t *panel = velapoka_panel_create(screen, VELAPOKA_RIGHT_X,
+                                          VELAPOKA_RIGHT_WIDTH);
+  lv_obj_t *preview;
+  lv_obj_t *roi;
+  lv_obj_t *card;
+  lv_obj_t *label;
+
+  label = velapoka_label_create(panel, "LIVE", 20, 20, COLOR_SUCCESS);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+  velapoka_label_create(panel, "10 FPS", 82, 25, COLOR_MUTED);
+  label = velapoka_label_create(panel, "PRODUCT  A-01", 345, 25,
+                                COLOR_TEXT);
+
+  preview = velapoka_card_create(panel, 18, 62, 460, 259);
+  lv_obj_set_style_bg_color(preview, COLOR_CARD_ALT, 0);
+  label = velapoka_label_create(preview, "CAMERA PREVIEW  512 x 288",
+                                119, 113, COLOR_MUTED);
+
+  roi = lv_obj_create(preview);
+  lv_obj_remove_flag(roi, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_pos(roi, 74, 48);
+  lv_obj_set_size(roi, 312, 164);
+  lv_obj_set_style_bg_opa(roi, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(roi, 2, 0);
+  lv_obj_set_style_border_color(roi, COLOR_PRIMARY, 0);
+  lv_obj_set_style_radius(roi, 2, 0);
+  lv_obj_set_style_pad_all(roi, 0, 0);
+  label = velapoka_label_create(roi, "ROI", 8, 6, COLOR_PRIMARY);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+
+  card = velapoka_card_create(panel, 18, 337, 284, 154);
+  velapoka_label_create(card, "INSPECTION METRICS", 14, 12, COLOR_MUTED);
+  label = velapoka_label_create(card, "PASS", 14, 40, COLOR_SUCCESS);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
+  velapoka_label_create(card, "Similarity", 14, 89, COLOR_MUTED);
+  velapoka_label_create(card, "96.4%", 118, 87, COLOR_TEXT);
+  velapoka_label_create(card, "Difference", 14, 117, COLOR_MUTED);
+  velapoka_label_create(card, "2.1%", 118, 115, COLOR_TEXT);
+  velapoka_label_create(card, "Time", 192, 89, COLOR_MUTED);
+  velapoka_label_create(card, "132 ms", 192, 115, COLOR_TEXT);
+
+  card = velapoka_card_create(panel, 316, 337, 162, 72);
+  velapoka_label_create(card, "REFERENCE", 12, 10, COLOR_MUTED);
+  velapoka_label_create(card, "thumbnail", 47, 39, COLOR_TEXT);
+  card = velapoka_card_create(panel, 316, 419, 162, 72);
+  velapoka_label_create(card, "DIFFERENCE", 12, 10, COLOR_MUTED);
+  velapoka_label_create(card, "thumbnail", 47, 39, COLOR_TEXT);
+
+  label = velapoka_label_create(panel,
+                                "Red boxes mark missing or misplaced parts",
+                                20, 524, COLOR_WARNING);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+}
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+
+int velapoka_ui_create(bool touch_online)
+{
+  lv_obj_t *screen = lv_screen_active();
+
+  if (lv_display_get_horizontal_resolution(NULL) != VELAPOKA_SCREEN_WIDTH ||
+      lv_display_get_vertical_resolution(NULL) != VELAPOKA_SCREEN_HEIGHT)
+    {
+      syslog(LOG_ERR, "VelaPoka UI: expected %dx%d display\n",
+             VELAPOKA_SCREEN_WIDTH, VELAPOKA_SCREEN_HEIGHT);
+      return -ERANGE;
+    }
+
+  lv_obj_clean(screen);
+  lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(screen, COLOR_SCREEN, 0);
+  lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_all(screen, 0, 0);
+
+  velapoka_left_create(screen, touch_online);
+  velapoka_right_create(screen);
+  lv_obj_invalidate(screen);
+  return OK;
+}

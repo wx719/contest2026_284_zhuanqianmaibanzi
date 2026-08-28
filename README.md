@@ -1,5 +1,9 @@
 # VelaPoka 可配置视觉装配防错终端 BSP
 
+> 当前比赛功能方案、实板基线、里程碑进度和新会话接手入口统一维护在
+> [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。旧章节如与计划文档冲突，
+> 以计划文档中的最新状态为准。
+
 本仓为 ESP32-P4X-Function-EV-Board 提供 openvela 板级适配。当前阶段按“先打通基础外设”的原则交付两套配置：
 
 - `configs/nsh`：已在 ESP32-P4 rev3.2 实板验证的最小 UART/NSH 恢复系统。

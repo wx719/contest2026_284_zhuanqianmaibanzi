@@ -1,0 +1,35 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+menuconfig EXAMPLES_VELAPOKA
+	tristate "VelaPoka visual assembly terminal"
+	default n
+	depends on GRAPHICS_LVGL
+	depends on LV_USE_NUTTX
+	depends on LV_USE_NUTTX_TOUCHSCREEN
+	---help---
+		Build the VelaPoka LVGL product application.  The first-light stage
+		uses /dev/fb0 and /dev/input0 to validate the static split-screen UI,
+		buttons and threshold slider.
+
+if EXAMPLES_VELAPOKA
+
+config EXAMPLES_VELAPOKA_PRIORITY
+	int "VelaPoka task priority"
+	default 100
+
+config EXAMPLES_VELAPOKA_STACKSIZE
+	int "VelaPoka task stack size"
+	default 16384
+
+config EXAMPLES_VELAPOKA_FB_DEVPATH
+	string "Framebuffer device path"
+	default "/dev/fb0"
+
+config EXAMPLES_VELAPOKA_INPUT_DEVPATH
+	string "Touchscreen device path"
+	default "/dev/input0"
+
+endif # EXAMPLES_VELAPOKA

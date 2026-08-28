@@ -1,0 +1,9 @@
+############################################################################
+# contest2026_284_zhuanqianmaibanzi/app/velapoka/Make.defs
+#
+# SPDX-License-Identifier: Apache-2.0
+############################################################################
+
+ifneq ($(CONFIG_EXAMPLES_VELAPOKA),)
+CONFIGURED_APPS += $(APPDIR)/examples/velapoka
+endif

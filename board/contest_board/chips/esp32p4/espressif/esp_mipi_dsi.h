@@ -68,6 +68,9 @@ struct esp_mipi_dsi_dpi_config_s
   uint8_t  format;              /* MIPI_DSI_FMT_RGB565 / RGB888 / ... */
 };
 
+typedef CODE void (*esp_mipi_dsi_vsync_callback_t)(FAR void *arg,
+                                                    bool frame_done);
+
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
@@ -186,6 +189,29 @@ int esp_mipi_dsi_bind_framebuffer(FAR void *fb, size_t fb_size,
  ****************************************************************************/
 
 int esp_mipi_dsi_flush_framebuffer(FAR void *addr, size_t len);
+
+/****************************************************************************
+ * Name: esp_mipi_dsi_queue_framebuffer
+ *
+ * Description:
+ *   Queue a framebuffer for activation at the next DW-GDMA frame boundary.
+ *   The buffer must have the same size and format as the framebuffer passed
+ *   to esp_mipi_dsi_bind_framebuffer().
+ ****************************************************************************/
+
+int esp_mipi_dsi_queue_framebuffer(FAR void *fb, size_t fb_size);
+
+/****************************************************************************
+ * Name: esp_mipi_dsi_set_vsync_callback
+ *
+ * Description:
+ *   Register a callback invoked from the DW-GDMA interrupt after each full
+ *   frame.  frame_done is true when a queued framebuffer has completed its
+ *   first scan and can be released by the framebuffer upper-half.
+ ****************************************************************************/
+
+int esp_mipi_dsi_set_vsync_callback(esp_mipi_dsi_vsync_callback_t callback,
+                                    FAR void *arg);
 
 /****************************************************************************
  * Name: esp_mipi_dsi_video_start

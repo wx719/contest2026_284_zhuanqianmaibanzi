@@ -193,6 +193,15 @@ int velapoka_bsp_initialize(void)
     }
 #endif
 
+#ifdef CONFIG_VELAPOKA_CAMERA
+  ret = velapoka_camera_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_WARNING,
+             "WARNING: SC2336 camera probe failed: %d; continuing\n", ret);
+    }
+#endif
+
 #ifdef CONFIG_VELAPOKA_DISPLAY
   ret = velapoka_display_initialize();
   if (ret < 0)
@@ -200,15 +209,6 @@ int velapoka_bsp_initialize(void)
       syslog(LOG_ERR, "ERROR: MIPI-DSI display initialization failed: %d\n",
              ret);
       return ret;
-    }
-#endif
-
-#ifdef CONFIG_VELAPOKA_CAMERA
-  ret = velapoka_camera_initialize();
-  if (ret < 0)
-    {
-      syslog(LOG_WARNING,
-             "WARNING: SC2336 camera probe failed: %d; continuing\n", ret);
     }
 #endif
 

@@ -1,0 +1,296 @@
+diff --git a/nuttx/include/platform/os.h b/nuttx/include/platform/os.h
+--- a/nuttx/include/platform/os.h
++++ b/nuttx/include/platform/os.h
+@@ -142,11 +142,14 @@
+ {
+   CODE void (*handler)(FAR void *arg);
+   FAR void *arg;
++  FAR struct esp_os_intr_handle_t *flink;
+   uint32_t status_reg;
+   uint32_t status_mask;
+   int source;
+   int irq;
+   int cpuint;
++  bool enabled;
++  bool shared;
+ };
+ 
+ typedef struct esp_os_intr_handle_t esp_os_intr_handle_t;
+diff --git a/nuttx/src/platform/os.c b/nuttx/src/platform/os.c
+--- a/nuttx/src/platform/os.c
++++ b/nuttx/src/platform/os.c
+@@ -109,6 +109,14 @@
+   FAR shared_vector_desc_t *next;
+ };
+ 
++struct esp_os_intr_source_s
++{
++  FAR esp_os_intr_handle_t *handlers;
++  int irq;
++  int cpuint;
++  bool shared;
++};
++
+ #define VECDESC_FL_RESERVED     (1 << 0)
+ #define VECDESC_FL_INIRAM       (1 << 1)
+ #define VECDESC_FL_SHARED       (1 << 2)
+@@ -180,6 +188,13 @@
+ static uint8_t g_int_flags_count[OS_PORT_NUM_PROCESSORS];
+ static irqstate_t g_int_flags[OS_PORT_NUM_PROCESSORS];
+ 
++/* One NuttX IRQ attachment owns each peripheral source.  IDF clients may
++ * register multiple status-filtered handlers on that source.
++ */
++
++static struct esp_os_intr_source_s g_intr_sources[ESP_NSOURCES];
++static spinlock_t g_intr_spin = SP_UNLOCKED;
++
+ /****************************************************************************
+  * Private Function Prototypes
+  ****************************************************************************/
+@@ -343,30 +358,85 @@
+ 
+ static int esp_os_intr_adapter(int irq, FAR void *context, FAR void *arg)
+ {
+-  FAR esp_os_intr_handle_t *handle = arg;
+-
+-  if (handle->status_reg == 0 ||
+-      (*(volatile uint32_t *)(uintptr_t)handle->status_reg &
+-       handle->status_mask) != 0)
+-    {
+-      handle->handler(handle->arg);
++  FAR struct esp_os_intr_source_s *source = arg;
++  FAR esp_os_intr_handle_t *handle;
++  irqstate_t flags;
++
++  (void)irq;
++  (void)context;
++
++  flags = spin_lock_irqsave(&g_intr_spin);
++  for (handle = source->handlers; handle != NULL; handle = handle->flink)
++    {
++      if (handle->enabled &&
++          (handle->status_reg == 0 ||
++           (*(volatile uint32_t *)(uintptr_t)handle->status_reg &
++            handle->status_mask) != 0))
++        {
++          handle->handler(handle->arg);
++        }
+     }
+ 
++  spin_unlock_irqrestore(&g_intr_spin, flags);
++
+   return OK;
+ }
+ 
+ esp_err_t esp_os_intr_free(intr_handle_t handle)
+ {
+   FAR esp_os_intr_handle_t *adapter = (FAR esp_os_intr_handle_t *)handle;
++  FAR struct esp_os_intr_source_s *source;
++  FAR esp_os_intr_handle_t **link;
++  FAR esp_os_intr_handle_t *cursor;
++  irqstate_t flags;
++  bool any_enabled = false;
+ 
+   if (adapter == NULL)
+     {
+       return ESP_ERR_INVALID_ARG;
+     }
+ 
+-  up_disable_irq(adapter->irq);
+-  irq_detach(adapter->irq);
+-  esp_teardown_irq(adapter->source, adapter->cpuint);
++  source = &g_intr_sources[adapter->source];
++  up_disable_irq(source->irq);
++
++  flags = spin_lock_irqsave(&g_intr_spin);
++  for (link = &source->handlers;
++       *link != NULL && *link != adapter;
++       link = &(*link)->flink)
++    {
++    }
++
++  if (*link == NULL)
++    {
++      spin_unlock_irqrestore(&g_intr_spin, flags);
++      up_enable_irq(source->irq);
++      return ESP_ERR_INVALID_STATE;
++    }
++
++  *link = adapter->flink;
++  for (cursor = source->handlers;
++       cursor != NULL;
++       cursor = cursor->flink)
++    {
++      any_enabled |= cursor->enabled;
++    }
++
++  if (source->handlers == NULL)
++    {
++      irq_detach(source->irq);
++      esp_teardown_irq(adapter->source, source->cpuint);
++      source->irq = 0;
++      source->cpuint = 0;
++      source->shared = false;
++    }
++
++  spin_unlock_irqrestore(&g_intr_spin, flags);
++
++  if (any_enabled)
++    {
++      up_enable_irq(source->irq);
++    }
++
+   kmm_free(adapter);
+   return ESP_OK;
+ }
+@@ -380,26 +450,48 @@
+ esp_err_t esp_intr_enable(intr_handle_t handle)
+ {
+   FAR esp_os_intr_handle_t *adapter = (FAR esp_os_intr_handle_t *)handle;
++  irqstate_t flags;
+ 
+   if (adapter == NULL)
+     {
+       return ESP_ERR_INVALID_ARG;
+     }
+ 
++  flags = spin_lock_irqsave(&g_intr_spin);
++  adapter->enabled = true;
+   up_enable_irq(adapter->irq);
++  spin_unlock_irqrestore(&g_intr_spin, flags);
+   return ESP_OK;
+ }
+ 
+ esp_err_t esp_intr_disable(intr_handle_t handle)
+ {
+   FAR esp_os_intr_handle_t *adapter = (FAR esp_os_intr_handle_t *)handle;
++  FAR esp_os_intr_handle_t *cursor;
++  irqstate_t flags;
++  bool any_enabled = false;
+ 
+   if (adapter == NULL)
+     {
+       return ESP_ERR_INVALID_ARG;
+     }
+ 
+-  up_disable_irq(adapter->irq);
++  flags = spin_lock_irqsave(&g_intr_spin);
++  adapter->enabled = false;
++
++  for (cursor = g_intr_sources[adapter->source].handlers;
++       cursor != NULL;
++       cursor = cursor->flink)
++    {
++      any_enabled |= cursor->enabled;
++    }
++
++  if (!any_enabled)
++    {
++      up_disable_irq(adapter->irq);
++    }
++
++  spin_unlock_irqrestore(&g_intr_spin, flags);
+   return ESP_OK;
+ }
+ 
+@@ -458,7 +550,9 @@
+                                         FAR intr_handle_t *ret_handle)
+ {
+   FAR esp_os_intr_handle_t *adapter;
++  FAR struct esp_os_intr_source_s *intr_source;
+   irq_priority_t priority = ESP_IRQ_PRIORITY_DEFAULT;
++  irqstate_t lock_flags;
+   int type = (flags & ESP_INTR_FLAG_EDGE) != 0 ?
+              ESP_IRQ_TRIGGER_EDGE : ESP_IRQ_TRIGGER_LEVEL;
+   int cpuint;
+@@ -470,6 +564,13 @@
+       return ESP_ERR_INVALID_ARG;
+     }
+ 
++  if (((flags & ESP_INTR_FLAG_SHARED) != 0 &&
++       (flags & ESP_INTR_FLAG_EDGE) != 0) ||
++      (intrstatusreg != 0 && intrstatusmask == 0))
++    {
++      return ESP_ERR_INVALID_ARG;
++    }
++
+   if ((flags & ESP_INTR_FLAG_IRAM) != 0)
+     {
+       type |= ESP_IRQ_IRAM;
+@@ -490,26 +591,64 @@
+       return ESP_ERR_NO_MEM;
+     }
+ 
+-  irq = ESP_SOURCE2IRQ(source);
+-  cpuint = esp_setup_irq(source, priority, type);
+-
+   adapter->handler = handler;
+   adapter->arg = arg;
+   adapter->status_reg = intrstatusreg;
+   adapter->status_mask = intrstatusmask;
+   adapter->source = source;
+-  adapter->irq = irq;
+-  adapter->cpuint = cpuint;
++  adapter->enabled = true;
++  adapter->shared = (flags & ESP_INTR_FLAG_SHARED) != 0;
+ 
+-  ret = irq_attach(irq, esp_os_intr_adapter, adapter);
+-  if (ret < 0)
++  lock_flags = spin_lock_irqsave(&g_intr_spin);
++  intr_source = &g_intr_sources[source];
++  if (intr_source->handlers != NULL)
+     {
+-      esp_teardown_irq(source, cpuint);
+-      kmm_free(adapter);
+-      return esp_errno_to_esp_err(ret);
++      if (!intr_source->shared || !adapter->shared)
++        {
++          spin_unlock_irqrestore(&g_intr_spin, lock_flags);
++          kmm_free(adapter);
++          return ESP_ERR_INVALID_STATE;
++        }
++
++      adapter->irq = intr_source->irq;
++      adapter->cpuint = intr_source->cpuint;
++      adapter->flink = intr_source->handlers;
++      intr_source->handlers = adapter;
++    }
++  else
++    {
++      irq = ESP_SOURCE2IRQ(source);
++      cpuint = esp_setup_irq(source, priority, type);
++      if (cpuint < 0)
++        {
++          spin_unlock_irqrestore(&g_intr_spin, lock_flags);
++          kmm_free(adapter);
++          return esp_errno_to_esp_err(cpuint);
++        }
++
++      adapter->irq = irq;
++      adapter->cpuint = cpuint;
++      intr_source->irq = irq;
++      intr_source->cpuint = cpuint;
++      intr_source->shared = adapter->shared;
++      intr_source->handlers = adapter;
++
++      ret = irq_attach(irq, esp_os_intr_adapter, intr_source);
++      if (ret < 0)
++        {
++          intr_source->handlers = NULL;
++          esp_teardown_irq(source, cpuint);
++          intr_source->irq = 0;
++          intr_source->cpuint = 0;
++          intr_source->shared = false;
++          spin_unlock_irqrestore(&g_intr_spin, lock_flags);
++          kmm_free(adapter);
++          return esp_errno_to_esp_err(ret);
++        }
+     }
+ 
+-  up_enable_irq(irq);
++  spin_unlock_irqrestore(&g_intr_spin, lock_flags);
++  up_enable_irq(adapter->irq);
+ 
+   if (ret_handle != NULL)
+     {

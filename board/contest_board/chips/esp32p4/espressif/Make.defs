@@ -221,6 +221,8 @@ ifeq ($(CONFIG_ARCH_CHIP_ESP32P4_VENDOR),y)
 		../patches/0002-nuttx-enable-interrupt-adapter.patch
 	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) apply \
 		../patches/0003-nuttx-freertos-api-compat.patch
+	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) apply \
+		../patches/0004-nuttx-shared-interrupt-adapter.patch
 endif
 ifeq ($(CONFIG_ESP_WIRELESS),y)
 ifneq ($(USE_NXTMPDIR_ESP_REPO_DIRECTLY),y)

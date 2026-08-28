@@ -431,6 +431,44 @@ static void IRAM_ATTR NOINLINE_ATTR recalib_bbpll(void)
 #endif
 
 /****************************************************************************
+ * Name: esp_set_cpu_frequency
+ *
+ * Description:
+ *   Switch only the CPU clock after PSRAM training.  The complete
+ *   esp_clk_init() path also recalibrates the RTC clocks and is not safe in
+ *   this simple-boot sequence after external RAM has been enabled.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_ESPRESSIF_ESP32P4
+static void esp_set_cpu_frequency(void)
+{
+  rtc_cpu_freq_config_t old_config;
+  rtc_cpu_freq_config_t new_config;
+  uint32_t old_freq_mhz;
+
+  rtc_clk_cpu_freq_get_config(&old_config);
+  old_freq_mhz = old_config.freq_mhz;
+
+  if (old_freq_mhz == CONFIG_ESPRESSIF_CPU_FREQ_MHZ)
+    {
+      return;
+    }
+
+  if (!rtc_clk_cpu_freq_mhz_to_config(CONFIG_ESPRESSIF_CPU_FREQ_MHZ,
+                                      &new_config))
+    {
+      PANIC();
+    }
+
+  esp_rom_output_tx_wait_idle(CONFIG_ESP_CONSOLE_ROM_SERIAL_PORT_NUM);
+  rtc_clk_cpu_freq_set_config(&new_config);
+  esp_cpu_set_cycle_count((uint64_t)esp_cpu_get_cycle_count() *
+                          CONFIG_ESPRESSIF_CPU_FREQ_MHZ / old_freq_mhz);
+}
+#endif
+
+/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -613,12 +651,14 @@ void __esp_start(void)
 #  endif
 #endif
 
-  /* Preserve the clock tree selected by bootloader_init(). */
-
-  /* bootloader_init() already selected and calibrated the clock tree for
-   * this RAM/simple-boot image.  Re-running esp_clk_init() after 200 MHz
-   * PSRAM training changes the shared MSPI clock domain and stalls here.
+  /* Keep the trained MSPI/PSRAM clock tree intact and change only the CPU
+   * clock.  The bootloader intentionally runs at 100 MHz, whereas the DPI
+   * path needs the configured application frequency for PSRAM bandwidth.
    */
+
+#ifdef CONFIG_ESPRESSIF_ESP32P4
+  esp_set_cpu_frequency();
+#endif
 
   bootloader_init_mem();
 

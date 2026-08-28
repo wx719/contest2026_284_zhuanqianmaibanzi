@@ -157,7 +157,9 @@ static void gt911_report(FAR struct gt911_dev_s *dev, bool down,
       raw_y = gt911_get_le16(point_data + 3);
       dev->last_id = point_data[0];
 
-      /* This panel's touch FPC orientation matches the display axes. */
+      /* The touch FPC is rotated 180 degrees relative to the displayed
+       * framebuffer.  Convert GT911 raw coordinates to LVGL screen space.
+       */
 
       if (raw_x >= BOARD_VELAPOKA_LCD_WIDTH)
         {
@@ -169,8 +171,8 @@ static void gt911_report(FAR struct gt911_dev_s *dev, bool down,
           raw_y = BOARD_VELAPOKA_LCD_HEIGHT - 1;
         }
 
-      x = raw_x;
-      y = raw_y;
+      x = BOARD_VELAPOKA_LCD_WIDTH - 1 - raw_x;
+      y = BOARD_VELAPOKA_LCD_HEIGHT - 1 - raw_y;
 
       if (dev->contact && dev->last_id == point_data[0] &&
           dev->last_x == x && dev->last_y == y)
@@ -180,6 +182,17 @@ static void gt911_report(FAR struct gt911_dev_s *dev, bool down,
 
       dev->last_x = x;
       dev->last_y = y;
+
+      if (!dev->contact)
+        {
+          syslog(LOG_INFO, "GT911: DOWN id=%u x=%d y=%d\n",
+                 dev->last_id, x, y);
+        }
+    }
+  else
+    {
+      syslog(LOG_INFO, "GT911: UP id=%u x=%d y=%d\n",
+             dev->last_id, dev->last_x, dev->last_y);
     }
 
   point->id = dev->last_id;

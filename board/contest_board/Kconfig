@@ -38,10 +38,14 @@ config VELAPOKA_DISPLAY
 	default y
 	depends on VELAPOKA_BSP
 	select ESPRESSIF_MIPI_DSI
+	select DRIVERS_VIDEO
+	select VIDEO_FB
+	select FB_UPDATE
 	---help---
-		Power the ESP32-P4 D-PHY, initialize the EK79007 panel and start
-		the DSI hardware color-bar pattern.  This first-light path validates
-		the panel without requiring PSRAM framebuffer support.
+		Power the ESP32-P4 D-PHY, initialize the EK79007 panel, allocate an
+		RGB888 framebuffer and register it as /dev/fb0.  The DSI hardware
+		color-bar generator remains available as a fallback if framebuffer
+		allocation or registration fails during bring-up.
 
 config VELAPOKA_CAMERA
 	bool "Enable AS-AG638A32M2-50 (SC2336) camera"
@@ -85,7 +89,10 @@ config VELAPOKA_TOUCHSCREEN_SAMPLE_CACHES
 config VELAPOKA_TOUCHSCREEN_SAMPLE_DELAY
 	int "Touchscreen polling delay (ticks)"
 	range 1 100
-	default 10
+	default 1
+	---help---
+		Delay between GT911 status reads.  Keep this at one scheduler tick
+		for responsive taps; the velapoka configuration uses a 10 ms tick.
 
 endif # VELAPOKA_TOUCHSCREEN
 
