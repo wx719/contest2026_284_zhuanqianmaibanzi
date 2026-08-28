@@ -12,13 +12,17 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <malloc.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <syslog.h>
+#include <time.h>
 
 #include <lvgl/lvgl.h>
 
+#include "velapoka_camera.h"
 #include "velapoka_ui.h"
 
 /****************************************************************************
@@ -33,6 +37,10 @@
 #define VELAPOKA_LEFT_WIDTH    492
 #define VELAPOKA_RIGHT_X       516
 #define VELAPOKA_RIGHT_WIDTH   496
+#define VELAPOKA_PREVIEW_WIDTH 460
+#define VELAPOKA_PREVIEW_HEIGHT 259
+#define VELAPOKA_PREVIEW_SIZE \
+  (VELAPOKA_PREVIEW_WIDTH * VELAPOKA_PREVIEW_HEIGHT)
 
 #define COLOR_SCREEN           lv_color_hex(0x07111f)
 #define COLOR_PANEL            lv_color_hex(0x0d1b2a)
@@ -66,12 +74,25 @@ enum velapoka_threshold_step_e
 
 struct velapoka_ui_s
 {
+  lv_image_dsc_t preview_dsc;
   lv_obj_t *status_label;
   lv_obj_t *result_label;
   lv_obj_t *result_detail;
   lv_obj_t *threshold_label;
   lv_obj_t *slider;
+  lv_obj_t *camera_dot;
+  lv_obj_t *preview_image;
+  lv_obj_t *preview_placeholder;
+  lv_obj_t *fps_label;
+  FAR uint16_t *preview_pixels;
+  uint16_t gray_rgb565[256];
+  uint16_t preview_xmap[VELAPOKA_PREVIEW_WIDTH];
+  uint16_t preview_ymap[VELAPOKA_PREVIEW_HEIGHT];
+  struct timespec fps_started;
+  uint32_t last_sequence;
+  unsigned int fps_frames;
   unsigned int action_count;
+  bool preview_seen;
 };
 
 /****************************************************************************
@@ -272,8 +293,8 @@ static lv_obj_t *velapoka_threshold_button_create(
   return button;
 }
 
-static void velapoka_device_badge(lv_obj_t *parent, const char *name,
-                                  int32_t x, bool online)
+static lv_obj_t *velapoka_device_badge(lv_obj_t *parent, const char *name,
+                                       int32_t x, bool online)
 {
   lv_obj_t *dot = lv_obj_create(parent);
   lv_obj_t *label;
@@ -287,9 +308,11 @@ static void velapoka_device_badge(lv_obj_t *parent, const char *name,
 
   label = velapoka_label_create(parent, name, x + 14, 57, COLOR_MUTED);
   lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+  return dot;
 }
 
-static void velapoka_left_create(lv_obj_t *screen, bool touch_online)
+static void velapoka_left_create(lv_obj_t *screen, bool touch_online,
+                                 bool camera_online)
 {
   lv_obj_t *panel = velapoka_panel_create(screen, VELAPOKA_LEFT_X,
                                           VELAPOKA_LEFT_WIDTH);
@@ -312,7 +335,8 @@ static void velapoka_left_create(lv_obj_t *screen, bool touch_online)
   card = velapoka_card_create(panel, 18, 86, 456, 102);
   label = velapoka_label_create(card, "DEVICE STATUS", 16, 13, COLOR_TEXT);
   lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
-  velapoka_device_badge(card, "CAMERA", 16, true);
+  g_ui.camera_dot = velapoka_device_badge(card, "CAMERA", 16,
+                                           camera_online);
   velapoka_device_badge(card, "DISPLAY", 126, true);
   velapoka_device_badge(card, "TOUCH", 244, touch_online);
   velapoka_device_badge(card, "SD", 344, true);
@@ -380,7 +404,7 @@ static void velapoka_left_create(lv_obj_t *screen, bool touch_online)
   lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
 }
 
-static void velapoka_right_create(lv_obj_t *screen)
+static void velapoka_right_create(lv_obj_t *screen, bool camera_online)
 {
   lv_obj_t *panel = velapoka_panel_create(screen, VELAPOKA_RIGHT_X,
                                           VELAPOKA_RIGHT_WIDTH);
@@ -391,14 +415,26 @@ static void velapoka_right_create(lv_obj_t *screen)
 
   label = velapoka_label_create(panel, "LIVE", 20, 20, COLOR_SUCCESS);
   lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
-  velapoka_label_create(panel, "10 FPS", 82, 25, COLOR_MUTED);
+  g_ui.fps_label = velapoka_label_create(panel,
+                                          camera_online ? "0 FPS" :
+                                                          "OFFLINE",
+                                          82, 25, COLOR_MUTED);
   label = velapoka_label_create(panel, "PRODUCT  A-01", 345, 25,
                                 COLOR_TEXT);
 
   preview = velapoka_card_create(panel, 18, 62, 460, 259);
   lv_obj_set_style_bg_color(preview, COLOR_CARD_ALT, 0);
-  label = velapoka_label_create(preview, "CAMERA PREVIEW  512 x 288",
-                                119, 113, COLOR_MUTED);
+  g_ui.preview_image = lv_image_create(preview);
+  lv_obj_set_pos(g_ui.preview_image, 0, 0);
+  lv_obj_set_size(g_ui.preview_image, VELAPOKA_PREVIEW_WIDTH,
+                  VELAPOKA_PREVIEW_HEIGHT);
+  lv_image_set_src(g_ui.preview_image, &g_ui.preview_dsc);
+
+  g_ui.preview_placeholder =
+    velapoka_label_create(preview,
+                          camera_online ? "WAITING FOR CAMERA" :
+                                          "CAMERA OFFLINE",
+                          139, 113, COLOR_MUTED);
 
   roi = lv_obj_create(preview);
   lv_obj_remove_flag(roi, LV_OBJ_FLAG_SCROLLABLE);
@@ -440,7 +476,7 @@ static void velapoka_right_create(lv_obj_t *screen)
  * Public Functions
  ****************************************************************************/
 
-int velapoka_ui_create(bool touch_online)
+int velapoka_ui_create(bool touch_online, bool camera_online)
 {
   lv_obj_t *screen = lv_screen_active();
 
@@ -452,14 +488,149 @@ int velapoka_ui_create(bool touch_online)
       return -ERANGE;
     }
 
+  if (g_ui.preview_pixels == NULL)
+    {
+      g_ui.preview_pixels =
+        memalign(64, VELAPOKA_PREVIEW_SIZE * sizeof(uint16_t));
+      if (g_ui.preview_pixels == NULL)
+        {
+          return -ENOMEM;
+        }
+    }
+
+  memset(g_ui.preview_pixels, 0,
+         VELAPOKA_PREVIEW_SIZE * sizeof(uint16_t));
+  memset(&g_ui.preview_dsc, 0, sizeof(g_ui.preview_dsc));
+  g_ui.preview_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  g_ui.preview_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+  g_ui.preview_dsc.header.w = VELAPOKA_PREVIEW_WIDTH;
+  g_ui.preview_dsc.header.h = VELAPOKA_PREVIEW_HEIGHT;
+  g_ui.preview_dsc.header.stride =
+    VELAPOKA_PREVIEW_WIDTH * sizeof(uint16_t);
+  g_ui.preview_dsc.data_size =
+    VELAPOKA_PREVIEW_SIZE * sizeof(uint16_t);
+  g_ui.preview_dsc.data = (FAR const uint8_t *)g_ui.preview_pixels;
+  g_ui.preview_seen = false;
+  g_ui.fps_frames = 0;
+
+  for (unsigned int i = 0; i <= UINT8_MAX; i++)
+    {
+      g_ui.gray_rgb565[i] = ((i & 0xf8) << 8) |
+                            ((i & 0xfc) << 3) | (i >> 3);
+    }
+
+  for (unsigned int i = 0; i < VELAPOKA_PREVIEW_WIDTH; i++)
+    {
+      g_ui.preview_xmap[i] = i * VELAPOKA_CAMERA_PREVIEW_WIDTH /
+                             VELAPOKA_PREVIEW_WIDTH;
+    }
+
+  for (unsigned int i = 0; i < VELAPOKA_PREVIEW_HEIGHT; i++)
+    {
+      g_ui.preview_ymap[i] = i * VELAPOKA_CAMERA_PREVIEW_HEIGHT /
+                             VELAPOKA_PREVIEW_HEIGHT;
+    }
+
   lv_obj_clean(screen);
   lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(screen, COLOR_SCREEN, 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_pad_all(screen, 0, 0);
 
-  velapoka_left_create(screen, touch_online);
-  velapoka_right_create(screen);
+  velapoka_left_create(screen, touch_online, camera_online);
+  velapoka_right_create(screen, camera_online);
   lv_obj_invalidate(screen);
   return OK;
+}
+
+int velapoka_ui_update_preview(FAR const uint8_t *gray, size_t size,
+                               uint32_t sequence)
+{
+  struct timespec now;
+  uint64_t elapsed_ms;
+  unsigned int x;
+  unsigned int y;
+  unsigned int fps_tenths;
+
+  if (gray == NULL || size != VELAPOKA_CAMERA_PREVIEW_SIZE ||
+      g_ui.preview_pixels == NULL || g_ui.preview_image == NULL)
+    {
+      return -EINVAL;
+    }
+
+  if (g_ui.preview_seen && sequence == g_ui.last_sequence)
+    {
+      return OK;
+    }
+
+  for (y = 0; y < VELAPOKA_PREVIEW_HEIGHT; y++)
+    {
+      FAR const uint8_t *src =
+        gray + g_ui.preview_ymap[y] * VELAPOKA_CAMERA_PREVIEW_WIDTH;
+      FAR uint16_t *dst =
+        g_ui.preview_pixels + y * VELAPOKA_PREVIEW_WIDTH;
+
+      for (x = 0; x < VELAPOKA_PREVIEW_WIDTH; x++)
+        {
+          dst[x] = g_ui.gray_rgb565[src[g_ui.preview_xmap[x]]];
+        }
+    }
+
+  g_ui.last_sequence = sequence;
+  lv_obj_add_flag(g_ui.preview_placeholder, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_invalidate(g_ui.preview_image);
+
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  if (!g_ui.preview_seen)
+    {
+      g_ui.preview_seen = true;
+      g_ui.fps_started = now;
+      g_ui.fps_frames = 1;
+      return OK;
+    }
+
+  g_ui.fps_frames++;
+  elapsed_ms = (uint64_t)(now.tv_sec - g_ui.fps_started.tv_sec) * 1000;
+  if (now.tv_nsec >= g_ui.fps_started.tv_nsec)
+    {
+      elapsed_ms += (now.tv_nsec - g_ui.fps_started.tv_nsec) / 1000000;
+    }
+  else
+    {
+      elapsed_ms -= 1000;
+      elapsed_ms += (1000000000 + now.tv_nsec -
+                     g_ui.fps_started.tv_nsec) / 1000000;
+    }
+
+  if (elapsed_ms >= 1000)
+    {
+      fps_tenths = (unsigned int)
+        ((uint64_t)g_ui.fps_frames * 10000 / elapsed_ms);
+      lv_label_set_text_fmt(g_ui.fps_label, "%u.%u FPS",
+                            fps_tenths / 10, fps_tenths % 10);
+      g_ui.fps_started = now;
+      g_ui.fps_frames = 0;
+    }
+
+  return OK;
+}
+
+void velapoka_ui_set_camera_online(bool online)
+{
+  if (g_ui.camera_dot != NULL)
+    {
+      lv_obj_set_style_bg_color(g_ui.camera_dot,
+                                online ? COLOR_SUCCESS : COLOR_DANGER, 0);
+    }
+
+  if (g_ui.fps_label != NULL)
+    {
+      lv_label_set_text(g_ui.fps_label, online ? "0 FPS" : "OFFLINE");
+    }
+
+  if (!online && g_ui.preview_placeholder != NULL)
+    {
+      lv_label_set_text(g_ui.preview_placeholder, "CAMERA OFFLINE");
+      lv_obj_remove_flag(g_ui.preview_placeholder, LV_OBJ_FLAG_HIDDEN);
+    }
 }

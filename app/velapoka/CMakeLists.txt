@@ -17,6 +17,7 @@ if(CONFIG_EXAMPLES_VELAPOKA)
     DEPENDS
     lvgl
     SRCS
+    velapoka_camera.c
     velapoka_main.c
     velapoka_ui.c)
 endif()

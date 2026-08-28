@@ -10,6 +10,7 @@
 
   <project path="contest2026_284_zhuanqianmaibanzi" name="contest2026_284_zhuanqianmaibanzi">
     <linkfile src="board/contest_board" dest="vendor/openvela/boards/contest2026_284_board"/>
+    <linkfile src="app/camtest" dest="apps/examples/camtest"/>
     <linkfile src="app/velapoka" dest="apps/examples/velapoka"/>
   </project>
 </manifest>

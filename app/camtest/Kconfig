@@ -1,0 +1,29 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config EXAMPLES_CAMTEST
+	tristate "V4L2 raw camera smoke test"
+	default n
+	depends on DRIVERS_VIDEO
+	---help---
+		Enable a small V4L2 capture test for raw camera devices.  The
+		application configures 1280x720 packed BGGR10, captures one or more
+		frames, and prints the frame size and checksum without writing a file.
+
+if EXAMPLES_CAMTEST
+
+config EXAMPLES_CAMTEST_PROGNAME
+	string "Program name"
+	default "camtest"
+
+config EXAMPLES_CAMTEST_PRIORITY
+	int "Camera test task priority"
+	default 100
+
+config EXAMPLES_CAMTEST_STACKSIZE
+	int "Camera test stack size"
+	default 4096
+
+endif

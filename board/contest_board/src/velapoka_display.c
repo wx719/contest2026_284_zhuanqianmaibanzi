@@ -1,5 +1,5 @@
 /****************************************************************************
- * vendor/openvela/boards/contest2026_284_board/src/velapoka_display.c
+ * board/contest_board/src/velapoka_display.c
  *
  * SPDX-License-Identifier: Apache-2.0
  ****************************************************************************/
@@ -33,12 +33,12 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-/* M1 first-light uses one framebuffer so small LVGL updates can be flushed
- * directly without waiting for the pan-display queue.  Restore two buffers
- * when the M2 camera-preview flip path has dedicated hardware validation.
+/* LVGL renders into the inactive framebuffer and queues it for selection at
+ * the next DSI VSYNC boundary.  This keeps CPU writes away from the frame
+ * currently scanned by DW-GDMA.
  */
 
-#define VELAPOKA_FB_COUNT 1
+#define VELAPOKA_FB_COUNT 2
 
 /* Keep each PSRAM cache write-back short while DW-GDMA continuously scans
  * the active video framebuffer.  LVGL can merge distant dirty objects into
@@ -190,7 +190,8 @@ static int velapoka_fb_updatearea(FAR struct fb_vtable_s *vtable,
   int ret;
 
   if (area == NULL || area->w == 0 || area->h == 0 ||
-      area->x >= fb->vinfo.xres || area->y >= fb->vinfo.yres ||
+      area->x >= fb->vinfo.xres ||
+      area->y >= fb->pinfo.yres_virtual ||
       area->x + area->w > fb->vinfo.xres ||
       area->y + area->h > fb->pinfo.yres_virtual)
     {
@@ -246,6 +247,17 @@ static void velapoka_fb_vsync(FAR void *arg, bool frame_done)
 static int velapoka_fb_waitforvsync(FAR struct fb_vtable_s *vtable)
 {
   FAR struct velapoka_fb_s *fb = (FAR struct velapoka_fb_s *)vtable;
+
+  /* FBIO_WAITFORVSYNC means the next boundary, not a boundary retained while
+   * nobody was waiting.  Drain the binary notification before blocking.  A
+   * VSYNC racing with the drain is retained by the semaphore and satisfies
+   * the wait below.
+   */
+
+  while (nxsem_trywait(&fb->vsync_sem) == OK)
+    {
+    }
+
   return nxsem_wait_uninterruptible(&fb->vsync_sem);
 }
 #endif
@@ -298,6 +310,7 @@ static int velapoka_fb_setpower(FAR struct fb_vtable_s *vtable, int power)
 static int velapoka_fb_register(void)
 {
   FAR struct velapoka_fb_s *fb = &g_framebuffer;
+  FAR uint8_t *initial_frame;
   int ret;
 
   memset(fb, 0, sizeof(*fb));
@@ -341,7 +354,13 @@ static int velapoka_fb_register(void)
       memcpy(fb->memory + fb->frame_length, fb->memory, fb->frame_length);
     }
 
-  ret = esp_mipi_dsi_bind_framebuffer(fb->memory, fb->frame_length,
+  /* LVGL starts rendering in buffer 0.  Scan the other blank buffer until
+   * the first completed LVGL frame is selected at VSYNC.
+   */
+
+  initial_frame = fb->memory + fb->frame_length *
+                  (VELAPOKA_FB_COUNT - 1);
+  ret = esp_mipi_dsi_bind_framebuffer(initial_frame, fb->frame_length,
                                       BOARD_VELAPOKA_LCD_WIDTH,
                                       BOARD_VELAPOKA_LCD_HEIGHT, 16);
   if (ret < 0)

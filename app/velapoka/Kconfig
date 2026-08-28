@@ -6,13 +6,15 @@
 menuconfig EXAMPLES_VELAPOKA
 	tristate "VelaPoka visual assembly terminal"
 	default n
+	depends on DRIVERS_VIDEO
 	depends on GRAPHICS_LVGL
+	depends on LV_USE_IMAGE
 	depends on LV_USE_NUTTX
 	depends on LV_USE_NUTTX_TOUCHSCREEN
 	---help---
-		Build the VelaPoka LVGL product application.  The first-light stage
-		uses /dev/fb0 and /dev/input0 to validate the static split-screen UI,
-		buttons and threshold slider.
+		Build the VelaPoka LVGL product application.  It captures packed
+		RAW10 frames from the V4L2 camera, converts them to a grayscale live
+		preview and renders the split-screen touch UI.
 
 if EXAMPLES_VELAPOKA
 
@@ -31,5 +33,25 @@ config EXAMPLES_VELAPOKA_FB_DEVPATH
 config EXAMPLES_VELAPOKA_INPUT_DEVPATH
 	string "Touchscreen device path"
 	default "/dev/input0"
+
+config EXAMPLES_VELAPOKA_CAMERA_DEVPATH
+	string "Camera device path"
+	default "/dev/video0"
+
+config EXAMPLES_VELAPOKA_CAMERA_PRIORITY
+	int "Camera capture thread priority"
+	default 110
+
+config EXAMPLES_VELAPOKA_CAMERA_STACKSIZE
+	int "Camera capture thread stack size"
+	default 8192
+
+config EXAMPLES_VELAPOKA_PREVIEW_GAIN
+	int "RAW10 preview gain"
+	range 1 16
+	default 4
+	---help---
+		Multiply the high eight bits of each RAW10 Bayer sample by this
+		value before clipping it to the grayscale preview range.
 
 endif # EXAMPLES_VELAPOKA

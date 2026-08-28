@@ -5,7 +5,7 @@
 > 完成与比赛功能有关的工作后，应同步更新“当前进度”“下一步”和“变更记录”。
 
 - 最后更新：2026-08-29
-- 当前阶段：M1 LVGL first-light 已归档，准备进入 M2 实时相机预览
+- 当前阶段：M2 实时相机预览已归档，进入 M3 标准件录入与 P0 检测
 - 比赛截止：2026-09-20
 - 功能冻结目标：2026-09-18
 
@@ -46,13 +46,13 @@ P0 目标是形成“录入标准件 → 拍摄 → 检测 → 显示 → 留档
 | UART/NSH | 已验证 | 可进入 NSH，系统时间正常运行 | 保持恢复配置稳定 |
 | PSRAM | 已验证 | 识别 32 MiB，相机和 framebuffer 可分配 | 增加并发压力和泄漏测试 |
 | GT911 | 已验证 | `/dev/input0`，四角及 DOWN/MOVE/UP 已通过 | 实板验证 LVGL 按钮、滑块连续操作 10 分钟 |
-| MIPI-DSI | 已验证（有已知限制） | `/dev/fb0`，1024×600 RGB565；M1 单 framebuffer 功能正常，快速点击仍可见撕裂 | M2 恢复双 framebuffer + VSync 切换并回归 CSI 并发 |
+| MIPI-DSI | 双缓冲实板验收通过 | `/dev/fb0`，1024×600 RGB565；双 framebuffer、后备缓冲缓存同步和 VSync 切换确认无撕裂 | 继续确认 30 分钟无蓝屏和队列卡死 |
 | SC2336/CSI | smoke test 已通过 | 两次 `camtest preview 3 5000` 均 PASS，完整 1152000 字节帧 | 连续 100 帧和长时间并发测试 |
-| 相机预览 | 已验证 | 屏幕正常显示灰度实景 | 迁移为 LVGL Image，叠加 ROI/差异框 |
+| 相机预览 | M2 实板验收通过 | 512×288 灰度预览稳定 15 fps；下一 VSync 绘制门控确认无撕裂 | M3 接入检测时回归帧率，长时间压力测试并入 M6 |
 | MicroSD | 适配存在，未完成验收 | 配置和板级实现存在 | `/dev/mmcsd0`、FAT 挂载、CRC 读回 |
 | Ethernet | 基础链路已验证 | `eth0` 静态 IPv4 双向 Ping | DHCP 回退和 HTTP 服务 |
-| LVGL | M1 实板验收通过（有已知限制） | 左右分屏、按钮、状态文字和阈值调节均可用；快速点击撕裂不影响事件和功能 | M2 接入 512×288 灰度预览并解决单缓冲撕裂 |
-| 产品应用 | 骨架已创建 | `app/velapoka` 已通过 manifest 映射并注册为 `velapoka` 命令 | 接入相机、识别、存储和状态机模块 |
+| LVGL | M2 双缓冲实板验收通过 | 实时 RGB565 Image 使用一次缩放和色彩转换；双 framebuffer/VSync 下稳定 15 fps、无撕裂 | M3 叠加检测结果时回归刷新稳定性 |
+| 产品应用 | M2 已归档 | 产品 ELF 含采集线程、最新帧优先灰度预览和 VSync 显示闭环 | 进入 M3，接入状态机、标准模板和 P0 检测 |
 | AI/比赛日志 | 已有基础 | `logs/wx719/` 已归集部分会话 | 持续归集、脱敏、校验 manifest |
 
 ### 3.1 已确认的相机关键约束
@@ -213,9 +213,9 @@ CONFIG_EXAMPLES_VELAPOKA=y
 ```
 
 第一版仅启用 Label、Button、Image、Bar、Slider、List 等需要的控件。
-LVGL 使用 NuttX fbdev direct mode。M1 静态界面使用单个 RGB565 framebuffer
-和 `FBIO_UPDATE` 脏矩形刷新，不单独分配全屏 draw buffer；M2 相机预览阶段再恢复
-并实板验证双 framebuffer 切屏。
+LVGL 使用 NuttX fbdev direct mode。M2 已恢复两个 RGB565 framebuffer，
+在后备缓冲绘制并通过 VSync 边界的 `FBIOPAN_DISPLAY` 切屏；`FBIO_UPDATE`
+负责同步对应后备缓冲的脏矩形缓存。
 
 ## 10. 内存与性能预算
 
@@ -224,7 +224,7 @@ LVGL 使用 NuttX fbdev direct mode。M1 静态界面使用单个 RGB565 framebu
 | 1024×600 RGB565 framebuffer 双缓冲 | 2.46 MB |
 | 1280×720 RAW10 相机双缓冲 | 2.30 MB |
 | CSI scratch buffer | 1.15 MB |
-| 512×288 RGB565 预览双缓冲 | 0.59 MB |
+| 512×288 L8 采集双缓冲 + RGB565 UI 显示缓冲 | 0.59 MB |
 | 参考图、当前图、差异图 | 约 0.18 MB |
 | LVGL heap | 0.25 MB |
 | 预计主要工作集 | 约 7 MB，目标控制在 8 MB 内 |
@@ -241,10 +241,10 @@ LVGL 使用 NuttX fbdev direct mode。M1 静态界面使用单个 RGB565 framebu
 
 ### M0：交付结构和基线冻结（目标 8 月 29 日）
 
-- [ ] 将 `camtest` 移入团队仓 `app/camtest` 并增加 manifest linkfile。
+- [x] 将 `camtest` 移入团队仓 `app/camtest` 并增加 manifest linkfile。
 - [x] 创建 `app/velapoka` 并增加 manifest linkfile。
-- [ ] 更新 README 中已过期的 CSI、framebuffer 和外设状态。
-- [ ] 确认 `nsh`、`velapoka` 两套配置均可构建。
+- [x] 更新 README 中已过期的 CSI、framebuffer 和外设状态。
+- [x] 确认 `nsh`、`velapoka` 两套配置均可构建。
 
 退出条件：从团队仓 manifest 同步后能得到完整板级代码和应用源码。
 
@@ -260,12 +260,14 @@ LVGL 使用 NuttX fbdev direct mode。M1 静态界面使用单个 RGB565 framebu
 
 ### M2：LVGL 实时相机预览（目标 9 月 1–3 日）
 
-- [ ] 抽取 `camtest` 的 V4L2 采集逻辑为产品相机模块。
-- [ ] 实现 512×288 灰度预览双缓冲。
-- [ ] 使用 LVGL Image 显示画面，增加 ROI 框和帧率标签。
-- [ ] 相机采集与 LVGL 双 framebuffer 同时运行。
+- [x] 抽取 `camtest` 的 V4L2 采集逻辑为产品相机模块。
+- [x] 实现 512×288 灰度预览双缓冲和最新帧优先发布。
+- [x] 使用 LVGL Image 显示画面，增加 ROI 框和实时帧率标签。
+- [x] 相机采集与 LVGL 双 framebuffer 同时运行，实板稳定 15 fps 且无撕裂。
 
-退出条件：右侧稳定预览 30 分钟，无 CSI 超时、DSI 蓝屏或 framebuffer 卡死。
+归档结论：核心功能和显示质量通过实板验收，详见
+`board/contest_board/docs/m2-camera-preview-archive.md`。30 分钟以上压力运行与
+M3 检测并发回归合并到 M6 稳定性验收，不阻塞进入 M3。
 
 ### M3：标准件录入与 P0 检测（目标 9 月 4–7 日）
 
@@ -303,13 +305,13 @@ LVGL 使用 NuttX fbdev direct mode。M1 静态界面使用单个 RGB565 framebu
 
 ## 12. 当前下一步
 
-M1 已按 `board/contest_board/docs/m1-lvgl-first-light-archive.md` 归档。
-下一阶段进入 M2，同时补齐 M0 遗留交付项：
+M2 已按 `board/contest_board/docs/m2-camera-preview-archive.md` 归档。当前进入
+M3 标准件录入与 P0 检测：
 
-1. 将 `camtest` 迁移到团队仓并补齐 manifest 映射与 README。
-2. 抽取 V4L2 采集、RAW10 灰度转换和 512×288 缩放逻辑。
-3. 将预览接入 LVGL Image，恢复双 framebuffer + VSync 切换。
-4. 联合验证相机、触摸和 DSI，消除 M1 快速点击撕裂并连续运行 30 分钟。
+1. 实现 READY、CAPTURE、PREPROCESS、INSPECT 和 PASS/FAIL 状态流转。
+2. 录入标准件时冻结连续 3 帧，生成 320×180 平均灰度模板。
+3. 实现固定 ROI、平均亮度归一化、块差和边缘差。
+4. 输出得分、差异比例和最多 8 个异常框，并回归预览不低于 8 fps。
 
 ## 13. 构建与验收命令
 
@@ -349,3 +351,11 @@ velapoka
 | 2026-08-29 | 收敛 M1 UI 实板问题 | 启动前强制同步黑色 framebuffer，约束状态文字宽度，并为阈值增加拖动提示及 −/+ 微调按钮 |
 | 2026-08-29 | 提升 M1 高频交互显示稳定性 | 加粗阈值滑块并强化进度对比；将大脏矩形拆为 8 行缓存同步块，降低快速点击时 DSI/PSRAM 争用导致的黑条风险 |
 | 2026-08-29 | 归档 M1 LVGL first-light 基线 | 左右分屏、GT911、按钮和阈值功能通过实板验收；记录快速点击仍有撕裂但不影响功能，转入 M2 双 framebuffer/VSync 解决 |
+| 2026-08-29 | 闭环 M0 应用交付结构 | `camtest` 迁入 `app/camtest`，增加 manifest linkfile，并更新根目录和板级 README 的外设状态 |
+| 2026-08-29 | 回归两套配置构建 | 固定 HAL `8d0a898` 加兼容补丁下，`nsh`、`velapoka` 均生成 `vela_nuttx.bin`；产品 ELF 含 `camtest`、`velapoka` |
+| 2026-08-29 | 完成 M2 实时预览软件链路 | 新增产品 V4L2 线程、RAW10 灰度缩放、最新帧优先双缓冲和 LVGL RGB565 Image；产品固件构建通过，待实板验收及双 framebuffer/VSync |
+| 2026-08-29 | 修复 M2 预览区域闪烁无画面 | 确认 LVGL 软件渲染不支持 L8 到 RGB565 的缩放/混色；UI 增加灰度查找表并转换为 RGB565 Image |
+| 2026-08-29 | 优化 M2 帧率并消除撕裂 | 灰度转 RGB565 与 460×259 缩放合并为单次查表，取消 LVGL 二次软件缩放；恢复双 framebuffer 并在 VSync 边界切屏 |
+| 2026-08-29 | 双 framebuffer 实板验收并解除预览限流 | 实板确认 5 fps 画面无撕裂；移除每 3 帧发布 1 帧的固定限流，改由最新帧优先双缓冲按消费能力自然丢帧 |
+| 2026-08-29 | 修复 15 fps 下双缓冲抢写 | 实板确认解除限流后达到 15 fps 但再次撕裂；应用绘制前等待下一真实 VSync，驱动清除历史 VSync 信号后再阻塞，避免 LVGL 写入尚在扫描的缓冲 |
+| 2026-08-29 | 归档 M2 实时相机预览 | 实板确认 512×288 灰度预览稳定 15 fps 且无撕裂；达到预览性能目标，长时间与检测并发压力测试转入 M6，开始 M3 P0 检测 |

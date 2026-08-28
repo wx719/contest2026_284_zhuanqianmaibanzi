@@ -1,0 +1,9 @@
+############################################################################
+# apps/examples/camtest/Make.defs
+#
+# SPDX-License-Identifier: Apache-2.0
+############################################################################
+
+ifneq ($(CONFIG_EXAMPLES_CAMTEST),)
+CONFIGURED_APPS += $(APPDIR)/examples/camtest
+endif

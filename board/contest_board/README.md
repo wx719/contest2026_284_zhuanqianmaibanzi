@@ -17,11 +17,16 @@ vendor/openvela/boards/contest2026_284_board
 - `configs/velapoka/defconfig`：VelaPoka 基础外设配置。
 - `src/velapoka_bsp.c`：控制 GPIO、共享软件 I2C 和状态节点。
 - `src/velapoka_gt911.c`：GT911 触控探测与轮询 lower-half。
-- `src/velapoka_display.c`：EK79007 MIPI-DSI first-light 与硬件彩条。
+- `src/velapoka_display.c`：EK79007 MIPI-DSI framebuffer 与 VSync 切换。
+- `src/velapoka_sc2336.c`：SC2336 传感器、CSI bridge 和 V4L2 注册。
 - `docs/display-touch-bringup.md`：显示与触摸链路、调试和实板验收流程。
 - `scripts/Make.defs`：链接规则、simple boot 镜像生成和 `vela_nuttx.bin` 产物命名。
 - `upstream/nuttx/`：需要单独提交到公共 NuttX 仓的基线修复。
 
 构建、烧录和验证步骤见仓库根目录 [README](../../README.md)。
 
-当前 UART、控制 GPIO、I2C、GT911、MIPI-DSI 彩条、PSRAM 和 EMAC 链路已完成实板验证。其中 EMAC 已注册为 NuttX `eth0`，静态 IPv4 下与 Windows 主机双向 Ping 均为 0% 丢包。CSI 和 SDMMC 仍未完成对应设备节点与实板 smoke test，不能把 HAL 源码存在等同于 NuttX 驱动就绪。
+当前 UART、控制 GPIO、I2C、GT911、PSRAM、MIPI-DSI framebuffer、SC2336/CSI
+和 EMAC 链路已完成相应实板 smoke test。显示注册为 `/dev/fb0`，相机注册为
+`/dev/video0`，两次 `camtest preview 3 5000` 均获得完整 1152000 字节帧；
+EMAC 注册为 `eth0`，静态 IPv4 双向 Ping 已通过。SDMMC 适配已存在，但仍需
+完成 `/dev/mmcsd0`、FAT 挂载和 CRC 读回验收。

@@ -12,6 +12,6 @@ STACKSIZE = $(CONFIG_EXAMPLES_VELAPOKA_STACKSIZE)
 MODULE = $(CONFIG_EXAMPLES_VELAPOKA)
 
 MAINSRC = velapoka_main.c
-CSRCS = velapoka_ui.c
+CSRCS = velapoka_camera.c velapoka_ui.c
 
 include $(APPDIR)/Application.mk
