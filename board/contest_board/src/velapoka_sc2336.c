@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <malloc.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <syslog.h>
@@ -80,6 +81,13 @@ struct sc2336_dev_s
 };
 
 static struct sc2336_dev_s g_sc2336;
+
+static FAR struct sc2336_dev_s *
+sc2336_from_data(FAR struct imgdata_s *data)
+{
+  return (FAR struct sc2336_dev_s *)
+    ((FAR uint8_t *)data - offsetof(struct sc2336_dev_s, data));
+}
 
 static const struct v4l2_fmtdesc g_sc2336_fmtdesc[] =
 {
@@ -385,7 +393,7 @@ static void sc2336_dump_csi_status(void)
 
 static int sc2336_data_init(FAR struct imgdata_s *data)
 {
-  FAR struct sc2336_dev_s *priv = (FAR struct sc2336_dev_s *)data;
+  FAR struct sc2336_dev_s *priv = sc2336_from_data(data);
   const esp_isp_processor_cfg_t isp_config =
   {
     .clk_hz                 = 80 * 1000 * 1000,
@@ -484,7 +492,7 @@ static int sc2336_data_init(FAR struct imgdata_s *data)
 
 static int sc2336_data_uninit(FAR struct imgdata_s *data)
 {
-  FAR struct sc2336_dev_s *priv = (FAR struct sc2336_dev_s *)data;
+  FAR struct sc2336_dev_s *priv = sc2336_from_data(data);
 
   if (priv->receiving)
     {
@@ -509,7 +517,7 @@ static int sc2336_data_set_buf(FAR struct imgdata_s *data,
                                FAR imgdata_format_t *fmt,
                                FAR uint8_t *addr, uint32_t size)
 {
-  FAR struct sc2336_dev_s *priv = (FAR struct sc2336_dev_s *)data;
+  FAR struct sc2336_dev_s *priv = sc2336_from_data(data);
 
   if (addr == NULL || size < SC2336_FRAME_SIZE ||
       ((uintptr_t)addr & (SC2336_BUFFER_ALIGN - 1)) != 0)
@@ -555,7 +563,7 @@ static int sc2336_data_start(FAR struct imgdata_s *data,
                               FAR imgdata_capture_t callback,
                               FAR void *arg)
 {
-  FAR struct sc2336_dev_s *priv = (FAR struct sc2336_dev_s *)data;
+  FAR struct sc2336_dev_s *priv = sc2336_from_data(data);
   int ret;
 
   priv->capture = callback;
@@ -578,7 +586,7 @@ static int sc2336_data_start(FAR struct imgdata_s *data,
 
 static int sc2336_data_stop(FAR struct imgdata_s *data)
 {
-  FAR struct sc2336_dev_s *priv = (FAR struct sc2336_dev_s *)data;
+  FAR struct sc2336_dev_s *priv = sc2336_from_data(data);
   unsigned int requests;
   unsigned int frames;
   int ret = OK;

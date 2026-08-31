@@ -256,7 +256,7 @@ int esp_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_ESPRESSIF_SPI_PERIPH
+#if defined(CONFIG_SPI_DRIVER) || defined(CONFIG_SPI_SLAVE_DRIVER)
 #  ifdef CONFIG_ESPRESSIF_SPI_SLAVE
   ret = board_spislavedev_initialize(ESPRESSIF_SPI2);
   if (ret < 0)
@@ -272,7 +272,7 @@ int esp_bringup(void)
     }
 #  endif
 
-#endif /* CONFIG_ESPRESSIF_SPI_PERIPH */
+#endif /* CONFIG_SPI_DRIVER || CONFIG_SPI_SLAVE_DRIVER */
 
 #ifdef CONFIG_ESPRESSIF_SPIFLASH
   ret = board_spiflash_init();

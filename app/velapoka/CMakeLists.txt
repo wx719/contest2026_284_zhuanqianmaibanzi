@@ -21,5 +21,6 @@ if(CONFIG_EXAMPLES_VELAPOKA)
     velapoka_inspect.c
     velapoka_main.c
     velapoka_state.c
+    velapoka_storage.c
     velapoka_ui.c)
 endif()

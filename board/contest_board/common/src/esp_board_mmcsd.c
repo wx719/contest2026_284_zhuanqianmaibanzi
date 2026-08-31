@@ -25,7 +25,7 @@
 #include <arch/board/board.h>
 
 #include "espressif/esp_gpio.h"
-#include "espressif/esp_spi_bitbang.h"
+#include "espressif/esp_spi.h"
 #include "esp_ldo_regulator.h"
 
 /****************************************************************************
@@ -72,7 +72,7 @@ int board_mmcsd_initialize(void)
 
   esp_configgpio(BOARD_VELAPOKA_SD_D1, INPUT | PULLUP);
   esp_configgpio(BOARD_VELAPOKA_SD_D2, INPUT | PULLUP);
-  spi = esp_spi_bitbang_init();
+  spi = esp_spibus_initialize(ESPRESSIF_SPI2);
   if (spi == NULL)
     {
       return -ENODEV;
@@ -101,7 +101,7 @@ int board_mmcsd_initialize(void)
   ret = mmcsd_spislotinitialize(0, 0, spi);
   if (ret < 0)
     {
-      syslog(LOG_ERR, "ERROR: bind GPIO SPI to /dev/mmcsd0 failed: %d\n",
+      syslog(LOG_ERR, "ERROR: bind SPI2 to /dev/mmcsd0 failed: %d\n",
              ret);
       return ret;
     }
@@ -137,7 +137,7 @@ int board_mmcsd_initialize(void)
   capacity = (uint64_t)geo.geo_nsectors * geo.geo_sectorsize;
   syslog(LOG_INFO,
          "MicroSD: /dev/mmcsd0 ready, sectors=%" PRIuOFF
-         " sector_size=%u capacity=%" PRIu64 " bytes (GPIO SPI, LDO4)\n",
+         " sector_size=%u capacity=%" PRIu64 " bytes (SPI2, LDO4)\n",
          geo.geo_nsectors, geo.geo_sectorsize, capacity);
   return OK;
 }

@@ -42,10 +42,13 @@ static bool velapoka_state_allowed(enum velapoka_state_e current,
       case VELAPOKA_STATE_SAVE_SAMPLE:
         return next == VELAPOKA_STATE_READY;
       case VELAPOKA_STATE_READY:
-      case VELAPOKA_STATE_PASS:
-      case VELAPOKA_STATE_FAIL:
         return next == VELAPOKA_STATE_CAPTURE ||
                next == VELAPOKA_STATE_SAMPLE_CAPTURE;
+      case VELAPOKA_STATE_PASS:
+      case VELAPOKA_STATE_FAIL:
+        return next == VELAPOKA_STATE_SAVE_RESULT;
+      case VELAPOKA_STATE_SAVE_RESULT:
+        return next == VELAPOKA_STATE_READY;
       case VELAPOKA_STATE_CAPTURE:
         return next == VELAPOKA_STATE_PREPROCESS;
       case VELAPOKA_STATE_PREPROCESS:
@@ -107,7 +110,7 @@ FAR const char *velapoka_state_name(enum velapoka_state_e state)
   {
     "STARTUP", "SELF_TEST", "IDLE", "SAMPLE_CAPTURE", "SAVE_SAMPLE",
     "READY", "CAPTURE", "PREPROCESS", "INSPECT", "PASS", "FAIL",
-    "ERROR"
+    "SAVE_RESULT", "ERROR"
   };
 
   if (state > VELAPOKA_STATE_ERROR)

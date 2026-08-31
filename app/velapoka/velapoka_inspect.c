@@ -585,6 +585,53 @@ bool velapoka_inspect_reference_ready(
   return ready;
 }
 
+int velapoka_inspect_reference_export(
+  FAR struct velapoka_inspector_s *inspector,
+  FAR uint8_t *reference, size_t size)
+{
+  if (inspector == NULL || reference == NULL ||
+      size != VELAPOKA_INSPECT_SIZE)
+    {
+      return -EINVAL;
+    }
+
+  pthread_mutex_lock(&inspector->lock);
+  if (!inspector->reference_valid)
+    {
+      pthread_mutex_unlock(&inspector->lock);
+      return -ENOENT;
+    }
+
+  memcpy(reference, inspector->reference, size);
+  pthread_mutex_unlock(&inspector->lock);
+  return OK;
+}
+
+int velapoka_inspect_reference_import(
+  FAR struct velapoka_inspector_s *inspector,
+  FAR const uint8_t *reference, size_t size)
+{
+  if (inspector == NULL || reference == NULL ||
+      size != VELAPOKA_INSPECT_SIZE)
+    {
+      return -EINVAL;
+    }
+
+  pthread_mutex_lock(&inspector->lock);
+  if (inspector->busy)
+    {
+      pthread_mutex_unlock(&inspector->lock);
+      return -EBUSY;
+    }
+
+  memcpy(inspector->reference, reference, size);
+  inspector->reference_valid = true;
+  inspector->enroll_count = VELAPOKA_ENROLL_FRAMES;
+  inspector->result_ready = false;
+  pthread_mutex_unlock(&inspector->lock);
+  return OK;
+}
+
 int velapoka_inspect_submit(FAR struct velapoka_inspector_s *inspector,
                             FAR const uint8_t *preview, size_t size,
                             uint32_t sequence,
@@ -644,6 +691,27 @@ int velapoka_inspect_poll(FAR struct velapoka_inspector_s *inspector,
 
   pthread_mutex_unlock(&inspector->lock);
   return ret;
+}
+
+int velapoka_inspect_snapshot(FAR struct velapoka_inspector_s *inspector,
+                              FAR uint8_t *normalized, size_t size)
+{
+  if (inspector == NULL || normalized == NULL ||
+      size != VELAPOKA_INSPECT_SIZE)
+    {
+      return -EINVAL;
+    }
+
+  pthread_mutex_lock(&inspector->lock);
+  if (inspector->busy)
+    {
+      pthread_mutex_unlock(&inspector->lock);
+      return -EBUSY;
+    }
+
+  memcpy(normalized, inspector->normalized, size);
+  pthread_mutex_unlock(&inspector->lock);
+  return OK;
 }
 
 void velapoka_inspect_discard_result(

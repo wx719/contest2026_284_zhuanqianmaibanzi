@@ -11,8 +11,13 @@
 - `configs/velapoka`：产品配置，包含 PSRAM、GT911、MIPI-DSI framebuffer、
   SC2336/CSI、EMAC、LVGL 和 VelaPoka 应用。
 
-当前已完成 M2 实时相机预览归档：512×288 灰度画面稳定 15 fps，双
-framebuffer/VSync 下无撕裂；开发已进入 M3 标准件录入与 P0 检测。
+当前已归档 M4 留档链路：在 M3 P0 检测基础上增加 MicroSD FAT 自动挂载、
+模板和阈值恢复、JSONL、FAIL 灰度 BMP、后台存储队列及最近历史显示。
+硬件 SPI2 替换 GPIO 模拟 SPI 后，最小文件和应用数据均已通过卸载、断电及
+Windows 读取验收；开机自启动、独立 Exit、队列排空、FAT 卸载和返回 NSH 均已
+实板通过，M3 三类样本标定仍待完成。
+产品固件在板级外设初始化完成后直接创建 VelaPoka 任务，正常使用和安全退出均可
+通过触屏完成；NSH 同时保留为维护入口。
 完整里程碑、已知限制和实板证据见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
 
 ## 当前基础外设
@@ -27,8 +32,8 @@ framebuffer/VSync 下无撕裂；开发已进入 M3 标准件录入与 P0 检测
 | MIPI-DSI | EK79007，1024×600 RGB565 双 framebuffer | `/dev/fb0`；VSync 切屏实板确认无撕裂 |
 | SC2336/CSI | 1280×720 BGGR packed RAW10，30 fps | `/dev/video0`；`camtest preview 3 5000` 两次通过 |
 | Ethernet | NuttX `eth0` | 静态 IPv4 与主机双向 Ping 通过 |
-| MicroSD | SDMMC 板级适配已存在 | 尚待 `/dev/mmcsd0`、FAT 挂载和 CRC 读回验收 |
-| LVGL | 1024×600 左右分屏产品界面 | `velapoka`；触摸正常，灰度预览稳定 15 fps 且无撕裂 |
+| MicroSD | SPI2，GPIO42/43/44/39，LDO4，FAT32 | `/dev/mmcsd0`、自动挂载、断电后 Windows 读取通过 |
+| LVGL | 1024×600 左右分屏产品界面 | 产品固件开机自启动；触摸正常，灰度预览稳定 15 fps 且无撕裂 |
 | BSP 状态 | 只读 JSON 字符设备 | `cat /dev/velapoka` |
 
 官方开发板说明和参考 BSP分别见 [ESP32-P4X-Function-EV-Board 用户指南](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4x-function-ev-board/user_guide.html) 与 [Espressif esp-bsp](https://github.com/espressif/esp-bsp)。
@@ -43,11 +48,13 @@ framebuffer/VSync 下无撕裂；开发已进入 M3 标准件录入与 P0 检测
 - `board/contest_board/src/velapoka_sc2336.c`：SC2336 与 ESP32-P4 CSI bridge。
 - `board/contest_board/docs/display-touch-bringup.md`：显示/触摸 bring-up 开发文档。
 - `board/contest_board/docs/m2-camera-preview-archive.md`：M2 实时预览实板验收归档。
+- `board/contest_board/docs/m4-storage-archive.md`：M4 MicroSD 留档、恢复和安全退出归档。
+- `board/contest_board/docs/velapoka-capture-storage-chain.md`：采集、检测与 SD 写入全链路。
 - `board/contest_board/include/board.h`：VelaPoka 板级资源表。
 - `board/contest_board/configs/{nsh,velapoka}/defconfig`：恢复配置与产品基础配置。
 - `board/contest_board/upstream/nuttx/`：构建基线所需的公共 NuttX 修复。
 - `app/camtest/`：可交付的 V4L2/RAW10 相机 smoke test。
-- `app/velapoka/`：LVGL 产品应用、V4L2 相机线程和实时灰度预览；后续接入检测与存储。
+- `app/velapoka/`：LVGL 产品应用、V4L2 相机线程、P0 检测和 MicroSD 留档。
 
 ## 构建
 
@@ -57,7 +64,8 @@ framebuffer/VSync 下无撕裂；开发已进入 M3 标准件录入与 P0 检测
 # 公共修复尚未合入基线时，仅首次执行。
 git -C nuttx apply \
   ../vendor/openvela/boards/contest2026_284_board/upstream/nuttx/0001-riscv-espressif-fix-kconfig-menu.patch \
-  ../vendor/openvela/boards/contest2026_284_board/upstream/nuttx/0002-usrsock-guard-api-when-disabled.patch
+  ../vendor/openvela/boards/contest2026_284_board/upstream/nuttx/0002-usrsock-guard-api-when-disabled.patch \
+  ../vendor/openvela/boards/contest2026_284_board/upstream/nuttx/0003-mmcsd-spi-verify-write-completion.patch
 
 # 镜像打包需要 esptool >= 4.8。
 python3 -m pip install 'esptool>=4.8,<5'
@@ -98,6 +106,6 @@ NSH 恢复入口。
 
 ## 当前开发重点
 
-M2 已完成 V4L2 采集、RAW10 灰度转换、512×288 最新帧预览和双
-framebuffer/VSync 无撕裂显示。当前进入 M3，开发三帧平均标准模板、固定 ROI、
-亮度归一化、模板差/边缘差和 PASS/FAIL 输出；之后接入 MicroSD 留档。
+M4 已归档。当前返回 M3，以固定工装完成正确、漏装、错位三类各不少于 20 次的
+阈值标定和统计；FAIL BMP 的 Windows 视觉检查、最近 3 条历史顺序与长时间压力
+测试并入 M6，不阻塞进入下一阶段。

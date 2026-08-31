@@ -79,6 +79,8 @@ struct velapoka_ui_s
   lv_obj_t *threshold_label;
   lv_obj_t *slider;
   lv_obj_t *camera_dot;
+  lv_obj_t *storage_dot;
+  lv_obj_t *history_label;
   lv_obj_t *preview_image;
   lv_obj_t *preview_placeholder;
   lv_obj_t *preview_card;
@@ -174,8 +176,13 @@ static void velapoka_action_event(lv_event_t *event)
 {
   enum velapoka_ui_action_e action =
     (enum velapoka_ui_action_e)(uintptr_t)lv_event_get_user_data(event);
+  lv_event_code_t code = lv_event_get_code(event);
 
-  if (lv_event_get_code(event) != LV_EVENT_CLICKED)
+  if (code == LV_EVENT_LONG_PRESSED && action == VELAPOKA_UI_ACTION_STOP)
+    {
+      action = VELAPOKA_UI_ACTION_EXIT;
+    }
+  else if (code != LV_EVENT_CLICKED)
     {
       return;
     }
@@ -187,16 +194,17 @@ static void velapoka_action_event(lv_event_t *event)
 }
 
 static lv_obj_t *velapoka_button_create(lv_obj_t *parent, const char *text,
-                                        int32_t x, lv_color_t color,
+                                        int32_t x, int32_t width,
+                                        lv_color_t color,
                                         enum velapoka_ui_action_e action)
 {
   lv_obj_t *button = lv_button_create(parent);
   lv_obj_t *label;
 
   lv_obj_set_pos(button, x, 292);
-  lv_obj_set_size(button, 140, 54);
+  lv_obj_set_size(button, width, 54);
   velapoka_button_style(button, color);
-  lv_obj_add_event_cb(button, velapoka_action_event, LV_EVENT_CLICKED,
+  lv_obj_add_event_cb(button, velapoka_action_event, LV_EVENT_ALL,
                       (FAR void *)(uintptr_t)action);
 
   label = lv_label_create(button);
@@ -280,7 +288,7 @@ static lv_obj_t *velapoka_device_badge(lv_obj_t *parent, const char *name,
 }
 
 static void velapoka_left_create(lv_obj_t *screen, bool touch_online,
-                                 bool camera_online)
+                                 bool camera_online, bool storage_online)
 {
   lv_obj_t *panel = velapoka_panel_create(screen, VELAPOKA_LEFT_X,
                                           VELAPOKA_LEFT_WIDTH);
@@ -307,7 +315,8 @@ static void velapoka_left_create(lv_obj_t *screen, bool touch_online,
                                            camera_online);
   velapoka_device_badge(card, "DISPLAY", 126, true);
   velapoka_device_badge(card, "TOUCH", 244, touch_online);
-  velapoka_device_badge(card, "SD", 344, true);
+  g_ui.storage_dot = velapoka_device_badge(card, "SD", 344,
+                                            storage_online);
 
   label = velapoka_label_create(panel, "Current sample", 22, 208,
                                 COLOR_MUTED);
@@ -349,12 +358,14 @@ static void velapoka_left_create(lv_obj_t *screen, bool touch_online,
                                 190, 271, COLOR_MUTED);
   lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
 
-  velapoka_button_create(panel, "Enroll Sample", 18, COLOR_PRIMARY_DARK,
+  velapoka_button_create(panel, "Enroll", 18, 104, COLOR_PRIMARY_DARK,
                          VELAPOKA_UI_ACTION_ENROLL);
-  velapoka_button_create(panel, "Inspect", 176, COLOR_PRIMARY,
+  velapoka_button_create(panel, "Inspect", 132, 104, COLOR_PRIMARY,
                          VELAPOKA_UI_ACTION_INSPECT);
-  velapoka_button_create(panel, "Stop", 334, COLOR_DANGER,
+  velapoka_button_create(panel, "Stop", 246, 104, COLOR_WARNING,
                          VELAPOKA_UI_ACTION_STOP);
+  velapoka_button_create(panel, "Exit", 360, 104, COLOR_DANGER,
+                         VELAPOKA_UI_ACTION_EXIT);
 
   card = velapoka_card_create(panel, 18, 365, 456, 126);
   label = velapoka_label_create(card, "LATEST RESULT", 16, 13,
@@ -366,9 +377,11 @@ static void velapoka_left_create(lv_obj_t *screen, bool touch_online,
                                               "Score --  |  Time -- ms",
                                               16, 83, COLOR_TEXT);
 
-  label = velapoka_label_create(panel,
-                                "RECENT   #003 PASS   #002 FAIL   #001 PASS",
+  label = velapoka_label_create(panel, "RECENT   No saved results",
                                 22, 524, COLOR_MUTED);
+  g_ui.history_label = label;
+  lv_obj_set_width(label, 448);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
 }
 
@@ -457,7 +470,8 @@ static void velapoka_right_create(lv_obj_t *screen, bool camera_online)
  * Public Functions
  ****************************************************************************/
 
-int velapoka_ui_create(bool touch_online, bool camera_online)
+int velapoka_ui_create(bool touch_online, bool camera_online,
+                       bool storage_online)
 {
   lv_obj_t *screen = lv_screen_active();
 
@@ -519,7 +533,8 @@ int velapoka_ui_create(bool touch_online, bool camera_online)
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_pad_all(screen, 0, 0);
 
-  velapoka_left_create(screen, touch_online, camera_online);
+  velapoka_left_create(screen, touch_online, camera_online,
+                       storage_online);
   velapoka_right_create(screen, camera_online);
   for (unsigned int i = 0; i < VELAPOKA_INSPECT_MAX_BOXES; i++)
     {
@@ -630,6 +645,15 @@ void velapoka_ui_set_camera_online(bool online)
     }
 }
 
+void velapoka_ui_set_storage_online(bool online)
+{
+  if (g_ui.storage_dot != NULL)
+    {
+      lv_obj_set_style_bg_color(g_ui.storage_dot,
+                                online ? COLOR_SUCCESS : COLOR_DANGER, 0);
+    }
+}
+
 enum velapoka_ui_action_e velapoka_ui_take_action(void)
 {
   enum velapoka_ui_action_e action = g_ui.pending_action;
@@ -641,6 +665,19 @@ enum velapoka_ui_action_e velapoka_ui_take_action(void)
 unsigned int velapoka_ui_get_threshold(void)
 {
   return g_ui.slider == NULL ? 18 : lv_slider_get_value(g_ui.slider);
+}
+
+void velapoka_ui_set_threshold(unsigned int threshold_percent)
+{
+  if (g_ui.slider == NULL)
+    {
+      return;
+    }
+
+  lv_slider_set_value(g_ui.slider, threshold_percent, LV_ANIM_OFF);
+  threshold_percent = lv_slider_get_value(g_ui.slider);
+  lv_label_set_text_fmt(g_ui.threshold_label, "Threshold  %u%%",
+                        threshold_percent);
 }
 
 void velapoka_ui_set_state(enum velapoka_state_e state)
@@ -748,4 +785,42 @@ void velapoka_ui_set_result(FAR const struct velapoka_result_s *result)
                       VELAPOKA_INSPECT_HEIGHT);
       lv_obj_remove_flag(object, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+void velapoka_ui_set_history(FAR const struct velapoka_history_s *history,
+                             unsigned int count)
+{
+  char text[160];
+  size_t used;
+  unsigned int i;
+
+  if (g_ui.history_label == NULL)
+    {
+      return;
+    }
+
+  used = strlcpy(text, "RECENT  ", sizeof(text));
+  if (history == NULL || count == 0)
+    {
+      strlcpy(text + used, " No saved results", sizeof(text) - used);
+    }
+  else
+    {
+      for (i = 0; i < count && used < sizeof(text); i++)
+        {
+          int length = snprintf(text + used, sizeof(text) - used,
+                                " #%" PRIu32 " %s",
+                                history[i].id,
+                                history[i].pass ? "PASS" : "FAIL");
+
+          if (length < 0 || (size_t)length >= sizeof(text) - used)
+            {
+              break;
+            }
+
+          used += length;
+        }
+    }
+
+  lv_label_set_text(g_ui.history_label, text);
 }

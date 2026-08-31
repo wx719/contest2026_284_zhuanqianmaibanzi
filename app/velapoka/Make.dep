@@ -1,4 +1,264 @@
 # Gen Make.dep automatically
+velapoka_camera.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaibanzi.app.velapoka.o: \
+ velapoka_camera.c \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/config.h \
+ /home/benson/openvela-work/contest284/nuttx/include/errno.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/compiler.h \
+ /home/benson/openvela-work/contest284/nuttx/include/fcntl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdint.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/malloc.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdlib.h \
+ /home/benson/openvela-work/contest284/nuttx/include/poll.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/poll.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdbool.h \
+ /home/benson/openvela-work/contest284/nuttx/include/signal.h \
+ /home/benson/openvela-work/contest284/nuttx/include/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/semaphore.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/queue.h \
+ /home/benson/openvela-work/contest284/nuttx/include/pthread.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mutex_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/semaphore_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/unistd.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/tls.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/assert.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/strings.h \
+ /home/benson/openvela-work/contest284/nuttx/include/string.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stddef.h \
+ /home/benson/openvela-work/contest284/nuttx/include/alloca.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/percpu.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/csr.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/chip/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/mode.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/clock.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/timex.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/select.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/math32.h \
+ /home/benson/openvela-work/contest284/nuttx/include/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/macro.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wdog.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/list_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/fs.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/serial/tioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/uio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/uio.h \
+ /home/benson/toolchains/riscv-none-elf-gcc/lib/gcc/riscv-none-elf/14.2.0/include/stdarg.h \
+ /home/benson/openvela-work/contest284/nuttx/include/dirent.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/map.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/gran.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spinlock_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/atomic.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/arch.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/barriers.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/lib.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/net/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/input/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/videoio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/video_controls.h \
+ velapoka_camera.h
+velapoka_inspect.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaibanzi.app.velapoka.o: \
+ velapoka_inspect.c \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/config.h \
+ /home/benson/openvela-work/contest284/nuttx/include/errno.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/compiler.h \
+ /home/benson/openvela-work/contest284/nuttx/include/pthread.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mutex_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/semaphore_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/semaphore.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdint.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/queue.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdbool.h \
+ /home/benson/openvela-work/contest284/nuttx/include/unistd.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/tls.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/assert.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/strings.h \
+ /home/benson/openvela-work/contest284/nuttx/include/string.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stddef.h \
+ /home/benson/openvela-work/contest284/nuttx/include/alloca.h \
+ /home/benson/openvela-work/contest284/nuttx/include/signal.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/percpu.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/csr.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/chip/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/mode.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/clock.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/timex.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/select.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/math32.h \
+ /home/benson/openvela-work/contest284/nuttx/include/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/macro.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wdog.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/list_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/fs.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/serial/tioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/uio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/uio.h \
+ /home/benson/toolchains/riscv-none-elf-gcc/lib/gcc/riscv-none-elf/14.2.0/include/stdarg.h \
+ /home/benson/openvela-work/contest284/nuttx/include/dirent.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/map.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/gran.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spinlock_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/atomic.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/arch.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/barriers.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdlib.h \
+ velapoka_camera.h velapoka_inspect.h velapoka_model.h
+velapoka_state.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaibanzi.app.velapoka.o: \
+ velapoka_state.c \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/config.h \
+ /home/benson/openvela-work/contest284/nuttx/include/errno.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/compiler.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdbool.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdint.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/syslog.h \
+ /home/benson/toolchains/riscv-none-elf-gcc/lib/gcc/riscv-none-elf/14.2.0/include/stdarg.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/ratelimit.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spinlock_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/atomic.h \
+ /home/benson/openvela-work/contest284/nuttx/include/pthread.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mutex_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/semaphore_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/semaphore.h \
+ /home/benson/openvela-work/contest284/nuttx/include/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/queue.h \
+ /home/benson/openvela-work/contest284/nuttx/include/unistd.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/tls.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/assert.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/strings.h \
+ /home/benson/openvela-work/contest284/nuttx/include/string.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stddef.h \
+ /home/benson/openvela-work/contest284/nuttx/include/alloca.h \
+ /home/benson/openvela-work/contest284/nuttx/include/signal.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/percpu.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/csr.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/chip/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/mode.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/clock.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/timex.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/select.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/math32.h \
+ /home/benson/openvela-work/contest284/nuttx/include/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/macro.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wdog.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/list_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/fs.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/serial/tioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/uio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/uio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/dirent.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/map.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/gran.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/arch.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/barriers.h \
+ velapoka_state.h
+velapoka_storage.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaibanzi.app.velapoka.o: \
+ velapoka_storage.c \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/config.h \
+ /home/benson/openvela-work/contest284/nuttx/include/errno.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/compiler.h \
+ /home/benson/openvela-work/contest284/nuttx/include/fcntl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdint.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/types.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stddef.h \
+ /home/benson/openvela-work/contest284/nuttx/include/pthread.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mutex_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/semaphore_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/semaphore.h \
+ /home/benson/openvela-work/contest284/nuttx/include/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/queue.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdbool.h \
+ /home/benson/openvela-work/contest284/nuttx/include/unistd.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/tls.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/assert.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sched.h \
+ /home/benson/openvela-work/contest284/nuttx/include/strings.h \
+ /home/benson/openvela-work/contest284/nuttx/include/string.h \
+ /home/benson/openvela-work/contest284/nuttx/include/alloca.h \
+ /home/benson/openvela-work/contest284/nuttx/include/signal.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/percpu.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/csr.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/chip/irq.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/mode.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/clock.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/timex.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/select.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/math32.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/macro.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wdog.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/list_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/fs.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/serial/tioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/uio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/uio.h \
+ /home/benson/toolchains/riscv-none-elf-gcc/lib/gcc/riscv-none-elf/14.2.0/include/stdarg.h \
+ /home/benson/openvela-work/contest284/nuttx/include/dirent.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/map.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/mm/gran.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/spawn.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/spinlock_type.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/atomic.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/arch.h \
+ /home/benson/openvela-work/contest284/nuttx/include/arch/barriers.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdio.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/lib.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdlib.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/mount.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/stat.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/statfs.h \
+ /home/benson/openvela-work/contest284/nuttx/include/syslog.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/ratelimit.h \
+ velapoka_storage.h velapoka_model.h
 velapoka_ui.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaibanzi.app.velapoka.o: \
  velapoka_ui.c \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/config.h \
@@ -12,9 +272,11 @@ velapoka_ui.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaib
  /home/benson/openvela-work/contest284/nuttx/include/arch/inttypes.h \
  /home/benson/openvela-work/contest284/nuttx/include/limits.h \
  /home/benson/openvela-work/contest284/nuttx/include/arch/limits.h \
+ /home/benson/openvela-work/contest284/nuttx/include/malloc.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdlib.h \
  /home/benson/openvela-work/contest284/nuttx/include/stdbool.h \
  /home/benson/openvela-work/contest284/nuttx/include/stdio.h \
- /home/benson/openvela-work/contest284/prebuilts/gcc/linux-x86_64/riscv-none-elf/lib/gcc/riscv-none-elf/13.4.0/include/stdarg.h \
+ /home/benson/toolchains/riscv-none-elf-gcc/lib/gcc/riscv-none-elf/14.2.0/include/stdarg.h \
  /home/benson/openvela-work/contest284/nuttx/include/time.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/fs.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/ioctl.h \
@@ -44,7 +306,6 @@ velapoka_ui.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaib
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/spinlock_type.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/atomic.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/lib.h \
- /home/benson/openvela-work/contest284/nuttx/include/stdlib.h \
  /home/benson/openvela-work/contest284/nuttx/include/syslog.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/ratelimit.h \
  /home/benson/openvela-work/contest284/nuttx/include/pthread.h \
@@ -231,6 +492,9 @@ velapoka_ui.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaib
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/lv_animimage.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/lv_image.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../lv_conf_internal.h \
+ /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../core/lv_obj.h \
+ /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../misc/lv_fs.h \
+ /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../draw/lv_draw.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/arc/lv_arc.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/arc/../../lv_conf_internal.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/arclabel/lv_arclabel.h \
@@ -451,22 +715,27 @@ velapoka_ui.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaib
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/core/../draw/../stdlib/lv_mem.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/core/../tick/lv_tick.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/core/../layouts/lv_layout.h \
- velapoka_ui.h
+ velapoka_camera.h velapoka_model.h velapoka_ui.h velapoka_state.h \
+ velapoka_storage.h
 velapoka_main.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianmaibanzi.app.velapoka.o: \
  velapoka_main.c \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/config.h \
  /home/benson/openvela-work/contest284/nuttx/include/errno.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/compiler.h \
- /home/benson/openvela-work/contest284/nuttx/include/stdbool.h \
+ /home/benson/openvela-work/contest284/nuttx/include/fcntl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/types.h \
  /home/benson/openvela-work/contest284/nuttx/include/stdint.h \
  /home/benson/openvela-work/contest284/nuttx/include/arch/types.h \
  /home/benson/openvela-work/contest284/nuttx/include/arch/inttypes.h \
  /home/benson/openvela-work/contest284/nuttx/include/limits.h \
  /home/benson/openvela-work/contest284/nuttx/include/arch/limits.h \
- /home/benson/openvela-work/contest284/nuttx/include/stdio.h \
- /home/benson/openvela-work/contest284/nuttx/include/sys/types.h \
- /home/benson/openvela-work/contest284/prebuilts/gcc/linux-x86_64/riscv-none-elf/lib/gcc/riscv-none-elf/13.4.0/include/stdarg.h \
+ /home/benson/openvela-work/contest284/nuttx/include/inttypes.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stddef.h \
+ /home/benson/openvela-work/contest284/nuttx/include/signal.h \
  /home/benson/openvela-work/contest284/nuttx/include/time.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdbool.h \
+ /home/benson/openvela-work/contest284/nuttx/include/stdio.h \
+ /home/benson/toolchains/riscv-none-elf-gcc/lib/gcc/riscv-none-elf/14.2.0/include/stdarg.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/fs.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/fs/ioctl.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/serial/tioctl.h \
@@ -484,9 +753,7 @@ velapoka_main.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianma
  /home/benson/openvela-work/contest284/nuttx/include/sched.h \
  /home/benson/openvela-work/contest284/nuttx/include/strings.h \
  /home/benson/openvela-work/contest284/nuttx/include/string.h \
- /home/benson/openvela-work/contest284/nuttx/include/stddef.h \
  /home/benson/openvela-work/contest284/nuttx/include/alloca.h \
- /home/benson/openvela-work/contest284/nuttx/include/signal.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/irq.h \
  /home/benson/openvela-work/contest284/nuttx/include/arch/irq.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/percpu.h \
@@ -497,6 +764,9 @@ velapoka_main.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianma
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/atomic.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/lib.h \
  /home/benson/openvela-work/contest284/nuttx/include/stdlib.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/net/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/input/ioctl.h \
  /home/benson/openvela-work/contest284/nuttx/include/unistd.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/tls.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/sched.h \
@@ -506,12 +776,17 @@ velapoka_main.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianma
  /home/benson/openvela-work/contest284/nuttx/include/sys/time.h \
  /home/benson/openvela-work/contest284/nuttx/include/sys/select.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/math32.h \
- /home/benson/openvela-work/contest284/nuttx/include/inttypes.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/macro.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/wdog.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/list_type.h \
  /home/benson/openvela-work/contest284/nuttx/include/arch/arch.h \
  /home/benson/openvela-work/contest284/nuttx/include/arch/barriers.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/video/fb.h \
+ /home/benson/openvela-work/contest284/nuttx/include/debug.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/streams.h \
+ /home/benson/openvela-work/contest284/nuttx/include/syslog.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/ratelimit.h \
+ /home/benson/openvela-work/contest284/nuttx/include/pthread.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/lvgl.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/lv_init.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/lv_conf_internal.h \
@@ -681,6 +956,9 @@ velapoka_main.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianma
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/lv_animimage.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/lv_image.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../lv_conf_internal.h \
+ /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../core/lv_obj.h \
+ /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../misc/lv_fs.h \
+ /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/animimage/../image/../../draw/lv_draw.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/arc/lv_arc.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/arc/../../lv_conf_internal.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/widgets/arclabel/lv_arclabel.h \
@@ -901,6 +1179,7 @@ velapoka_main.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianma
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/core/../draw/../stdlib/lv_mem.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/core/../tick/lv_tick.h \
  /home/benson/openvela-work/contest284/apps/graphics/lvgl/lvgl/src/core/../layouts/lv_layout.h \
- velapoka_ui.h
+ velapoka_camera.h velapoka_inspect.h velapoka_model.h velapoka_state.h \
+ velapoka_storage.h velapoka_ui.h
 # No files specified for dependency generation
 # No files specified for dependency generation

@@ -26,6 +26,9 @@
 
 #include <nuttx/config.h>
 
+#include <errno.h>
+#include <sched.h>
+#include <syslog.h>
 #include <sys/types.h>
 
 #include <nuttx/board.h>
@@ -33,6 +36,10 @@
 #include "esp32p4-function-ev-board.h"
 
 #ifdef CONFIG_BOARDCTL
+
+#ifdef CONFIG_EXAMPLES_VELAPOKA
+int velapoka_main(int argc, FAR char *argv[]);
+#endif
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -69,15 +76,35 @@
 
 int board_app_initialize(uintptr_t arg)
 {
+  int ret = OK;
+
 #ifdef CONFIG_BOARD_LATE_INITIALIZE
   /* Board initialization already performed by board_late_initialize() */
-
-  return OK;
 #else
   /* Perform board-specific initialization */
 
-  return esp_bringup();
+  ret = esp_bringup();
+  if (ret < 0)
+    {
+      return ret;
+    }
 #endif
+
+#ifdef CONFIG_EXAMPLES_VELAPOKA
+  ret = task_create("velapoka", CONFIG_EXAMPLES_VELAPOKA_PRIORITY,
+                    CONFIG_EXAMPLES_VELAPOKA_STACKSIZE,
+                    velapoka_main, NULL);
+  if (ret < 0)
+    {
+      ret = -errno;
+      syslog(LOG_ERR, "VelaPoka autostart failed: %d\n", ret);
+      return ret;
+    }
+
+  syslog(LOG_INFO, "VelaPoka autostart: pid=%d\n", ret);
+#endif
+
+  return OK;
 }
 
 #endif /* CONFIG_BOARDCTL */

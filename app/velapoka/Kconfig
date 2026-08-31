@@ -54,4 +54,20 @@ config EXAMPLES_VELAPOKA_PREVIEW_GAIN
 		Multiply the high eight bits of each RAW10 Bayer sample by this
 		value before clipping it to the grayscale preview range.
 
+config EXAMPLES_VELAPOKA_STORAGE_DEVPATH
+	string "MicroSD block device path"
+	default "/dev/mmcsd0"
+
+config EXAMPLES_VELAPOKA_STORAGE_MOUNTPOINT
+	string "MicroSD FAT mount point"
+	default "/mnt/sdcard"
+
+config EXAMPLES_VELAPOKA_STORAGE_PRIORITY
+	int "Storage worker priority"
+	default 90
+
+config EXAMPLES_VELAPOKA_STORAGE_STACKSIZE
+	int "Storage worker stack size"
+	default 4096
+
 endif # EXAMPLES_VELAPOKA

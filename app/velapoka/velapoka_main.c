@@ -13,9 +13,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -26,11 +28,24 @@
 #include "velapoka_camera.h"
 #include "velapoka_inspect.h"
 #include "velapoka_state.h"
+#include "velapoka_storage.h"
 #include "velapoka_ui.h"
+
+/****************************************************************************
+ * Private Data
+ ****************************************************************************/
+
+static volatile sig_atomic_t g_velapoka_exit_requested;
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+static void velapoka_signal_handler(int signo)
+{
+  (void)signo;
+  g_velapoka_exit_requested = 1;
+}
 
 static int velapoka_set_state(FAR struct velapoka_state_s *state,
                               enum velapoka_state_e next)
@@ -55,12 +70,24 @@ int main(int argc, FAR char *argv[])
   lv_nuttx_result_t result;
   FAR struct velapoka_camera_s *camera = NULL;
   FAR struct velapoka_inspector_s *inspector = NULL;
+  FAR struct velapoka_storage_s *storage = NULL;
+  FAR uint8_t *storage_image = NULL;
+  struct velapoka_history_s history[VELAPOKA_HISTORY_COUNT];
   struct velapoka_state_s state;
+  unsigned int restored_threshold = 18;
+  unsigned int history_count;
   bool touch_online;
   bool camera_online;
+  bool storage_online;
+  bool previous_storage_online;
+  bool reference_restored = false;
   int sync_fd = -1;
+  int storage_ret = OK;
   int ret;
 
+  g_velapoka_exit_requested = 0;
+  signal(SIGINT, velapoka_signal_handler);
+  signal(SIGTERM, velapoka_signal_handler);
   velapoka_state_init(&state);
 
   if (lv_is_initialized())
@@ -90,6 +117,55 @@ int main(int argc, FAR char *argv[])
               info.input_path);
     }
 
+  ret = velapoka_inspect_start(&inspector);
+  if (ret < 0)
+    {
+      fprintf(stderr, "velapoka: warning: inspector unavailable: %d\n",
+              ret);
+    }
+
+  ret = velapoka_storage_start(&storage);
+  if (ret < 0)
+    {
+      fprintf(stderr, "velapoka: warning: storage unavailable: %d\n",
+              ret);
+    }
+  else
+    {
+      storage_image = malloc(VELAPOKA_INSPECT_SIZE);
+      if (storage_image == NULL)
+        {
+          fprintf(stderr,
+                  "velapoka: warning: storage image buffer unavailable\n");
+          velapoka_storage_stop(storage);
+          storage = NULL;
+        }
+      else if (inspector != NULL)
+        {
+          ret = velapoka_storage_load_reference(
+            storage, storage_image, VELAPOKA_INSPECT_SIZE,
+            &restored_threshold);
+          if (ret == OK)
+            {
+              ret = velapoka_inspect_reference_import(
+                inspector, storage_image, VELAPOKA_INSPECT_SIZE);
+              reference_restored = ret == OK;
+              if (ret < 0)
+                {
+                  fprintf(stderr,
+                          "velapoka: warning: template restore failed: %d\n",
+                          ret);
+                }
+            }
+          else if (ret != -ENOENT)
+            {
+              fprintf(stderr,
+                      "velapoka: warning: stored template invalid: %d\n",
+                      ret);
+            }
+        }
+    }
+
   ret = velapoka_camera_start(&camera);
   camera_online = ret == OK;
   if (!camera_online)
@@ -98,12 +174,8 @@ int main(int argc, FAR char *argv[])
               CONFIG_EXAMPLES_VELAPOKA_CAMERA_DEVPATH, ret);
     }
 
-  ret = velapoka_inspect_start(&inspector);
-  if (ret < 0)
-    {
-      fprintf(stderr, "velapoka: warning: inspector unavailable: %d\n",
-              ret);
-    }
+  storage_online = velapoka_storage_online(storage);
+  previous_storage_online = storage_online;
 
   lv_display_set_default(result.disp);
   sync_fd = open(info.fb_path, O_RDWR | O_CLOEXEC);
@@ -113,17 +185,32 @@ int main(int argc, FAR char *argv[])
               info.fb_path, errno);
     }
 
-  ret = velapoka_ui_create(touch_online, camera_online);
+  ret = velapoka_ui_create(touch_online, camera_online, storage_online);
   if (ret < 0)
     {
       fprintf(stderr, "velapoka: UI creation failed: %d\n", ret);
-      close(sync_fd);
+      if (sync_fd >= 0)
+        {
+          close(sync_fd);
+        }
+
+      free(storage_image);
+      velapoka_storage_stop(storage);
       velapoka_inspect_stop(inspector);
       velapoka_camera_stop(camera);
       lv_nuttx_deinit(&result);
       lv_deinit();
       return ret;
     }
+
+  if (reference_restored)
+    {
+      velapoka_ui_set_threshold(restored_threshold);
+    }
+
+  history_count = velapoka_storage_get_history(
+    storage, history, VELAPOKA_HISTORY_COUNT);
+  velapoka_ui_set_history(history, history_count);
 
   printf("velapoka: live preview ready, fb=%s touch=%s camera=%s\n",
          info.fb_path, touch_online ? info.input_path : "offline",
@@ -139,8 +226,15 @@ int main(int argc, FAR char *argv[])
                               "Preview only; restart the application",
                               true);
     }
+  else if (reference_restored)
+    {
+      velapoka_set_state(&state, VELAPOKA_STATE_READY);
+      velapoka_ui_set_message("TEMPLATE RESTORED",
+                              "Reference and threshold loaded from SD",
+                              false);
+    }
 
-  for (; ; )
+  while (!g_velapoka_exit_requested)
     {
       enum velapoka_ui_action_e action;
       uint32_t idle;
@@ -214,6 +308,14 @@ int main(int argc, FAR char *argv[])
           velapoka_ui_set_message("STOPPED",
                                   "Enroll or inspect when ready", false);
         }
+      else if (action == VELAPOKA_UI_ACTION_EXIT)
+        {
+          velapoka_ui_set_message("SHUTTING DOWN",
+                                  "Flushing storage and unmounting SD",
+                                  false);
+          lv_timer_handler();
+          break;
+        }
 
       if (camera != NULL)
         {
@@ -241,9 +343,40 @@ int main(int argc, FAR char *argv[])
                         {
                           velapoka_set_state(&state,
                                              VELAPOKA_STATE_SAVE_SAMPLE);
-                          velapoka_ui_set_message("SAMPLE READY",
-                                                  "3-frame reference active",
-                                                  false);
+                          if (storage != NULL && storage_image != NULL)
+                            {
+                              ret = velapoka_inspect_reference_export(
+                                inspector, storage_image,
+                                VELAPOKA_INSPECT_SIZE);
+                              if (ret == OK)
+                                {
+                                  ret = velapoka_storage_save_reference(
+                                    storage, storage_image,
+                                    VELAPOKA_INSPECT_SIZE,
+                                    velapoka_ui_get_threshold());
+                                }
+                            }
+                          else
+                            {
+                              ret = -ENODEV;
+                            }
+
+                          if (ret == OK)
+                            {
+                              velapoka_ui_set_message(
+                                "SAMPLE READY",
+                                "Reference queued for SD storage", false);
+                            }
+                          else
+                            {
+                              fprintf(stderr,
+                                      "velapoka: template save failed: %d\n",
+                                      ret);
+                              velapoka_ui_set_message(
+                                "SAMPLE READY",
+                                "Reference active; SD save failed", true);
+                            }
+
                           velapoka_set_state(&state,
                                              VELAPOKA_STATE_READY);
                         }
@@ -304,6 +437,8 @@ int main(int argc, FAR char *argv[])
           ret = velapoka_inspect_poll(inspector, &inspection);
           if (ret > 0 && state.current == VELAPOKA_STATE_INSPECT)
             {
+              uint32_t record_id;
+
               velapoka_set_state(&state,
                                  inspection.pass ? VELAPOKA_STATE_PASS :
                                                    VELAPOKA_STATE_FAIL);
@@ -318,6 +453,57 @@ int main(int argc, FAR char *argv[])
                      inspection.difference_tenths % 10,
                      inspection.box_count, inspection.elapsed_ms,
                      inspection.sequence);
+
+              if (storage != NULL)
+                {
+                  if (!inspection.pass)
+                    {
+                      ret = velapoka_inspect_snapshot(
+                        inspector, storage_image, VELAPOKA_INSPECT_SIZE);
+                    }
+                  else
+                    {
+                      ret = OK;
+                    }
+
+                  if (ret == OK)
+                    {
+                      ret = velapoka_storage_save_result(
+                        storage, &inspection,
+                        inspection.pass ? NULL : storage_image,
+                        inspection.pass ? 0 : VELAPOKA_INSPECT_SIZE,
+                        velapoka_ui_get_threshold(), &record_id);
+                    }
+
+                  if (ret == OK)
+                    {
+                      history_count = velapoka_storage_get_history(
+                        storage, history, VELAPOKA_HISTORY_COUNT);
+                      velapoka_ui_set_history(history, history_count);
+                      printf("velapoka: result queued as record #%" PRIu32
+                             "\n", record_id);
+                    }
+                  else
+                    {
+                      fprintf(stderr,
+                              "velapoka: result storage failed: %d\n", ret);
+                    }
+                }
+
+              velapoka_set_state(&state, VELAPOKA_STATE_SAVE_RESULT);
+              velapoka_set_state(&state, VELAPOKA_STATE_READY);
+            }
+        }
+
+      storage_online = velapoka_storage_online(storage);
+      if (storage_online != previous_storage_online)
+        {
+          velapoka_ui_set_storage_online(storage_online);
+          previous_storage_online = storage_online;
+          if (!storage_online)
+            {
+              fprintf(stderr, "velapoka: storage went offline: %d\n",
+                      velapoka_storage_last_error(storage));
             }
         }
 
@@ -327,9 +513,11 @@ int main(int argc, FAR char *argv[])
             {
               ret = ioctl(sync_fd, FBIO_WAITFORVSYNC, 0);
             }
-          while (ret < 0 && errno == EINTR);
+          while (ret < 0 && errno == EINTR &&
+                 !g_velapoka_exit_requested);
 
-          if (ret < 0)
+          if (ret < 0 &&
+              !(errno == EINTR && g_velapoka_exit_requested))
             {
               fprintf(stderr, "velapoka: VSYNC wait failed: %d\n", errno);
               close(sync_fd);
@@ -355,5 +543,44 @@ int main(int argc, FAR char *argv[])
       usleep(idle * 1000);
     }
 
+  printf("velapoka: shutdown requested\n");
+  velapoka_camera_stop(camera);
+  velapoka_inspect_stop(inspector);
+  storage_ret = velapoka_storage_stop(storage);
+
+  if (storage_ret < 0)
+    {
+      velapoka_ui_set_message("SHUTDOWN ERROR",
+                              "Storage flush failed; keep SD inserted",
+                              true);
+    }
+  else
+    {
+      velapoka_ui_set_message("SAFE EXIT COMPLETE",
+                              "Storage saved; safe to power off",
+                              false);
+    }
+
+  lv_timer_handler();
+  usleep(200 * 1000);
+
+  if (sync_fd >= 0)
+    {
+      close(sync_fd);
+    }
+
+  free(storage_image);
+  lv_nuttx_deinit(&result);
+  lv_deinit();
+
+  if (storage_ret < 0)
+    {
+      fprintf(stderr,
+              "velapoka: shutdown completed with storage error: %d\n",
+              storage_ret);
+      return storage_ret;
+    }
+
+  printf("velapoka: safe shutdown complete\n");
   return OK;
 }
