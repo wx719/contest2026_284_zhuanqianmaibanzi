@@ -23,6 +23,7 @@
 #include <lvgl/lvgl.h>
 
 #include "velapoka_camera.h"
+#include "velapoka_model.h"
 #include "velapoka_ui.h"
 
 /****************************************************************************
@@ -59,13 +60,6 @@
  * Private Types
  ****************************************************************************/
 
-enum velapoka_action_e
-{
-  VELAPOKA_ACTION_ENROLL = 0,
-  VELAPOKA_ACTION_INSPECT,
-  VELAPOKA_ACTION_STOP
-};
-
 enum velapoka_threshold_step_e
 {
   VELAPOKA_THRESHOLD_DECREASE = 0,
@@ -78,11 +72,17 @@ struct velapoka_ui_s
   lv_obj_t *status_label;
   lv_obj_t *result_label;
   lv_obj_t *result_detail;
+  lv_obj_t *metrics_result;
+  lv_obj_t *metrics_similarity;
+  lv_obj_t *metrics_difference;
+  lv_obj_t *metrics_time;
   lv_obj_t *threshold_label;
   lv_obj_t *slider;
   lv_obj_t *camera_dot;
   lv_obj_t *preview_image;
   lv_obj_t *preview_placeholder;
+  lv_obj_t *preview_card;
+  lv_obj_t *difference_boxes[VELAPOKA_INSPECT_MAX_BOXES];
   lv_obj_t *fps_label;
   FAR uint16_t *preview_pixels;
   uint16_t gray_rgb565[256];
@@ -92,6 +92,7 @@ struct velapoka_ui_s
   uint32_t last_sequence;
   unsigned int fps_frames;
   unsigned int action_count;
+  enum velapoka_ui_action_e pending_action;
   bool preview_seen;
 };
 
@@ -171,8 +172,8 @@ static void velapoka_status_set(const char *status, lv_color_t color)
 
 static void velapoka_action_event(lv_event_t *event)
 {
-  enum velapoka_action_e action =
-    (enum velapoka_action_e)(uintptr_t)lv_event_get_user_data(event);
+  enum velapoka_ui_action_e action =
+    (enum velapoka_ui_action_e)(uintptr_t)lv_event_get_user_data(event);
 
   if (lv_event_get_code(event) != LV_EVENT_CLICKED)
     {
@@ -180,46 +181,14 @@ static void velapoka_action_event(lv_event_t *event)
     }
 
   g_ui.action_count++;
-  switch (action)
-    {
-      case VELAPOKA_ACTION_ENROLL:
-        velapoka_status_set("CAPTURE", COLOR_WARNING);
-        lv_label_set_text(g_ui.result_label, "SAMPLE READY");
-        lv_label_set_text_fmt(g_ui.result_detail,
-                              "Touch event #%u  |  waiting for camera",
-                              g_ui.action_count);
-        syslog(LOG_INFO, "VelaPoka UI: enroll button clicked (%u)\n",
-               g_ui.action_count);
-        break;
-
-      case VELAPOKA_ACTION_INSPECT:
-        velapoka_status_set("INSPECT", COLOR_PRIMARY);
-        lv_label_set_text(g_ui.result_label, "PASS");
-        lv_label_set_text_fmt(g_ui.result_detail,
-                              "Score 96.4  |  static first-light #%u",
-                              g_ui.action_count);
-        syslog(LOG_INFO, "VelaPoka UI: inspect button clicked (%u)\n",
-               g_ui.action_count);
-        break;
-
-      case VELAPOKA_ACTION_STOP:
-        velapoka_status_set("STOPPED", COLOR_DANGER);
-        lv_label_set_text(g_ui.result_label, "STOPPED");
-        lv_label_set_text_fmt(g_ui.result_detail,
-                              "Touch event #%u  |  press Inspect to resume",
-                              g_ui.action_count);
-        syslog(LOG_INFO, "VelaPoka UI: stop button clicked (%u)\n",
-               g_ui.action_count);
-        break;
-
-      default:
-        break;
-    }
+  g_ui.pending_action = action;
+  syslog(LOG_INFO, "VelaPoka UI: action=%u click=%u\n",
+         (unsigned int)action, g_ui.action_count);
 }
 
 static lv_obj_t *velapoka_button_create(lv_obj_t *parent, const char *text,
                                         int32_t x, lv_color_t color,
-                                        enum velapoka_action_e action)
+                                        enum velapoka_ui_action_e action)
 {
   lv_obj_t *button = lv_button_create(parent);
   lv_obj_t *label;
@@ -246,7 +215,6 @@ static void velapoka_slider_event(lv_event_t *event)
 
   if (lv_event_get_code(event) == LV_EVENT_RELEASED)
     {
-      velapoka_status_set("READY", COLOR_SUCCESS);
       syslog(LOG_INFO, "VelaPoka UI: threshold=%" PRId32 "%%\n", value);
     }
 }
@@ -382,11 +350,11 @@ static void velapoka_left_create(lv_obj_t *screen, bool touch_online,
   lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
 
   velapoka_button_create(panel, "Enroll Sample", 18, COLOR_PRIMARY_DARK,
-                         VELAPOKA_ACTION_ENROLL);
+                         VELAPOKA_UI_ACTION_ENROLL);
   velapoka_button_create(panel, "Inspect", 176, COLOR_PRIMARY,
-                         VELAPOKA_ACTION_INSPECT);
+                         VELAPOKA_UI_ACTION_INSPECT);
   velapoka_button_create(panel, "Stop", 334, COLOR_DANGER,
-                         VELAPOKA_ACTION_STOP);
+                         VELAPOKA_UI_ACTION_STOP);
 
   card = velapoka_card_create(panel, 18, 365, 456, 126);
   label = velapoka_label_create(card, "LATEST RESULT", 16, 13,
@@ -423,6 +391,7 @@ static void velapoka_right_create(lv_obj_t *screen, bool camera_online)
                                 COLOR_TEXT);
 
   preview = velapoka_card_create(panel, 18, 62, 460, 259);
+  g_ui.preview_card = preview;
   lv_obj_set_style_bg_color(preview, COLOR_CARD_ALT, 0);
   g_ui.preview_image = lv_image_create(preview);
   lv_obj_set_pos(g_ui.preview_image, 0, 0);
@@ -438,8 +407,16 @@ static void velapoka_right_create(lv_obj_t *screen, bool camera_online)
 
   roi = lv_obj_create(preview);
   lv_obj_remove_flag(roi, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_pos(roi, 74, 48);
-  lv_obj_set_size(roi, 312, 164);
+  lv_obj_set_pos(roi,
+                 VELAPOKA_ROI_X * VELAPOKA_PREVIEW_WIDTH /
+                 VELAPOKA_INSPECT_WIDTH,
+                 VELAPOKA_ROI_Y * VELAPOKA_PREVIEW_HEIGHT /
+                 VELAPOKA_INSPECT_HEIGHT);
+  lv_obj_set_size(roi,
+                  VELAPOKA_ROI_WIDTH * VELAPOKA_PREVIEW_WIDTH /
+                  VELAPOKA_INSPECT_WIDTH,
+                  VELAPOKA_ROI_HEIGHT * VELAPOKA_PREVIEW_HEIGHT /
+                  VELAPOKA_INSPECT_HEIGHT);
   lv_obj_set_style_bg_opa(roi, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(roi, 2, 0);
   lv_obj_set_style_border_color(roi, COLOR_PRIMARY, 0);
@@ -450,14 +427,18 @@ static void velapoka_right_create(lv_obj_t *screen, bool camera_online)
 
   card = velapoka_card_create(panel, 18, 337, 284, 154);
   velapoka_label_create(card, "INSPECTION METRICS", 14, 12, COLOR_MUTED);
-  label = velapoka_label_create(card, "PASS", 14, 40, COLOR_SUCCESS);
+  label = velapoka_label_create(card, "--", 14, 40, COLOR_MUTED);
+  g_ui.metrics_result = label;
   lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
   velapoka_label_create(card, "Similarity", 14, 89, COLOR_MUTED);
-  velapoka_label_create(card, "96.4%", 118, 87, COLOR_TEXT);
+  g_ui.metrics_similarity =
+    velapoka_label_create(card, "--", 118, 87, COLOR_TEXT);
   velapoka_label_create(card, "Difference", 14, 117, COLOR_MUTED);
-  velapoka_label_create(card, "2.1%", 118, 115, COLOR_TEXT);
+  g_ui.metrics_difference =
+    velapoka_label_create(card, "--", 118, 115, COLOR_TEXT);
   velapoka_label_create(card, "Time", 192, 89, COLOR_MUTED);
-  velapoka_label_create(card, "132 ms", 192, 115, COLOR_TEXT);
+  g_ui.metrics_time =
+    velapoka_label_create(card, "--", 192, 115, COLOR_TEXT);
 
   card = velapoka_card_create(panel, 316, 337, 162, 72);
   velapoka_label_create(card, "REFERENCE", 12, 10, COLOR_MUTED);
@@ -512,6 +493,7 @@ int velapoka_ui_create(bool touch_online, bool camera_online)
   g_ui.preview_dsc.data = (FAR const uint8_t *)g_ui.preview_pixels;
   g_ui.preview_seen = false;
   g_ui.fps_frames = 0;
+  g_ui.pending_action = VELAPOKA_UI_ACTION_NONE;
 
   for (unsigned int i = 0; i <= UINT8_MAX; i++)
     {
@@ -539,6 +521,19 @@ int velapoka_ui_create(bool touch_online, bool camera_online)
 
   velapoka_left_create(screen, touch_online, camera_online);
   velapoka_right_create(screen, camera_online);
+  for (unsigned int i = 0; i < VELAPOKA_INSPECT_MAX_BOXES; i++)
+    {
+      g_ui.difference_boxes[i] = lv_obj_create(g_ui.preview_card);
+      lv_obj_remove_flag(g_ui.difference_boxes[i], LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_style_bg_opa(g_ui.difference_boxes[i], LV_OPA_TRANSP, 0);
+      lv_obj_set_style_border_width(g_ui.difference_boxes[i], 3, 0);
+      lv_obj_set_style_border_color(g_ui.difference_boxes[i],
+                                    COLOR_DANGER, 0);
+      lv_obj_set_style_radius(g_ui.difference_boxes[i], 2, 0);
+      lv_obj_set_style_pad_all(g_ui.difference_boxes[i], 0, 0);
+      lv_obj_add_flag(g_ui.difference_boxes[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
   lv_obj_invalidate(screen);
   return OK;
 }
@@ -632,5 +627,125 @@ void velapoka_ui_set_camera_online(bool online)
     {
       lv_label_set_text(g_ui.preview_placeholder, "CAMERA OFFLINE");
       lv_obj_remove_flag(g_ui.preview_placeholder, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+enum velapoka_ui_action_e velapoka_ui_take_action(void)
+{
+  enum velapoka_ui_action_e action = g_ui.pending_action;
+
+  g_ui.pending_action = VELAPOKA_UI_ACTION_NONE;
+  return action;
+}
+
+unsigned int velapoka_ui_get_threshold(void)
+{
+  return g_ui.slider == NULL ? 18 : lv_slider_get_value(g_ui.slider);
+}
+
+void velapoka_ui_set_state(enum velapoka_state_e state)
+{
+  lv_color_t color = COLOR_PRIMARY;
+
+  if (state == VELAPOKA_STATE_READY || state == VELAPOKA_STATE_PASS)
+    {
+      color = COLOR_SUCCESS;
+    }
+  else if (state == VELAPOKA_STATE_SAMPLE_CAPTURE ||
+           state == VELAPOKA_STATE_SAVE_SAMPLE)
+    {
+      color = COLOR_WARNING;
+    }
+  else if (state == VELAPOKA_STATE_FAIL || state == VELAPOKA_STATE_ERROR)
+    {
+      color = COLOR_DANGER;
+    }
+  else if (state == VELAPOKA_STATE_IDLE)
+    {
+      color = COLOR_MUTED;
+    }
+
+  velapoka_status_set(velapoka_state_name(state), color);
+}
+
+void velapoka_ui_set_enroll_progress(unsigned int captured,
+                                     unsigned int total)
+{
+  lv_label_set_text(g_ui.result_label, "ENROLLING");
+  lv_obj_set_style_text_color(g_ui.result_label, COLOR_WARNING, 0);
+  lv_label_set_text_fmt(g_ui.result_detail, "Reference frame %u / %u",
+                        captured, total);
+}
+
+void velapoka_ui_set_message(FAR const char *title,
+                             FAR const char *detail, bool error)
+{
+  lv_label_set_text(g_ui.result_label, title);
+  lv_obj_set_style_text_color(g_ui.result_label,
+                              error ? COLOR_DANGER : COLOR_TEXT, 0);
+  lv_label_set_text(g_ui.result_detail, detail);
+}
+
+void velapoka_ui_clear_boxes(void)
+{
+  unsigned int i;
+
+  for (i = 0; i < VELAPOKA_INSPECT_MAX_BOXES; i++)
+    {
+      if (g_ui.difference_boxes[i] != NULL)
+        {
+          lv_obj_add_flag(g_ui.difference_boxes[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+void velapoka_ui_set_result(FAR const struct velapoka_result_s *result)
+{
+  lv_color_t color;
+  unsigned int i;
+
+  if (result == NULL)
+    {
+      return;
+    }
+
+  color = result->pass ? COLOR_SUCCESS : COLOR_DANGER;
+  lv_label_set_text(g_ui.result_label, result->pass ? "PASS" : "FAIL");
+  lv_obj_set_style_text_color(g_ui.result_label, color, 0);
+  lv_label_set_text_fmt(g_ui.result_detail,
+                        "Score %u.%u  |  Diff %u.%u%%  |  %" PRIu32 " ms",
+                        result->score_tenths / 10,
+                        result->score_tenths % 10,
+                        result->difference_tenths / 10,
+                        result->difference_tenths % 10,
+                        result->elapsed_ms);
+  lv_label_set_text(g_ui.metrics_result, result->pass ? "PASS" : "FAIL");
+  lv_obj_set_style_text_color(g_ui.metrics_result, color, 0);
+  lv_label_set_text_fmt(g_ui.metrics_similarity, "%u.%u%%",
+                        result->score_tenths / 10,
+                        result->score_tenths % 10);
+  lv_label_set_text_fmt(g_ui.metrics_difference, "%u.%u%%",
+                        result->difference_tenths / 10,
+                        result->difference_tenths % 10);
+  lv_label_set_text_fmt(g_ui.metrics_time, "%" PRIu32 " ms",
+                        result->elapsed_ms);
+
+  velapoka_ui_clear_boxes();
+  for (i = 0; i < result->box_count; i++)
+    {
+      FAR const struct velapoka_box_s *box = &result->boxes[i];
+      lv_obj_t *object = g_ui.difference_boxes[i];
+
+      lv_obj_set_pos(object,
+                     box->x * VELAPOKA_PREVIEW_WIDTH /
+                     VELAPOKA_INSPECT_WIDTH,
+                     box->y * VELAPOKA_PREVIEW_HEIGHT /
+                     VELAPOKA_INSPECT_HEIGHT);
+      lv_obj_set_size(object,
+                      box->width * VELAPOKA_PREVIEW_WIDTH /
+                      VELAPOKA_INSPECT_WIDTH,
+                      box->height * VELAPOKA_PREVIEW_HEIGHT /
+                      VELAPOKA_INSPECT_HEIGHT);
+      lv_obj_remove_flag(object, LV_OBJ_FLAG_HIDDEN);
     }
 }

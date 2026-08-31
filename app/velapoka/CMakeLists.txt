@@ -18,6 +18,8 @@ if(CONFIG_EXAMPLES_VELAPOKA)
     lvgl
     SRCS
     velapoka_camera.c
+    velapoka_inspect.c
     velapoka_main.c
+    velapoka_state.c
     velapoka_ui.c)
 endif()

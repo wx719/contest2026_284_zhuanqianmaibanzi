@@ -15,6 +15,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "velapoka_model.h"
+#include "velapoka_state.h"
+
+/****************************************************************************
+ * Public Types
+ ****************************************************************************/
+
+enum velapoka_ui_action_e
+{
+  VELAPOKA_UI_ACTION_NONE = 0,
+  VELAPOKA_UI_ACTION_ENROLL,
+  VELAPOKA_UI_ACTION_INSPECT,
+  VELAPOKA_UI_ACTION_STOP
+};
+
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
@@ -23,5 +38,14 @@ int velapoka_ui_create(bool touch_online, bool camera_online);
 int velapoka_ui_update_preview(FAR const uint8_t *gray, size_t size,
                                uint32_t sequence);
 void velapoka_ui_set_camera_online(bool online);
+enum velapoka_ui_action_e velapoka_ui_take_action(void);
+unsigned int velapoka_ui_get_threshold(void);
+void velapoka_ui_set_state(enum velapoka_state_e state);
+void velapoka_ui_set_enroll_progress(unsigned int captured,
+                                     unsigned int total);
+void velapoka_ui_set_message(FAR const char *title,
+                             FAR const char *detail, bool error);
+void velapoka_ui_set_result(FAR const struct velapoka_result_s *result);
+void velapoka_ui_clear_boxes(void);
 
 #endif /* __APPS_EXAMPLES_VELAPOKA_VELAPOKA_UI_H */
