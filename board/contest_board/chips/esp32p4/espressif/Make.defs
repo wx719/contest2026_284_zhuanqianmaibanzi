@@ -170,6 +170,12 @@ ifndef ESP_HAL_3RDPARTY_VERSION
 	ESP_HAL_3RDPARTY_VERSION = 8d0a898910084206721a0892ab093021bca1496a
 endif
 
+ESP_HOSTED_REPO = esp-hosted
+ESP_HOSTED_VERSION = 0.0.6
+ESP_HOSTED_COMMIT = 65ebfacb7608889fe854e3442817e1998e4a4d9e
+ESP_HOSTED_SHA256 = 5ce9baaf68d38c9042fc38bb15961a170d90ea7389e070180a4c29fd64be47c9
+ESP_HOSTED_URL = https://github.com/espressif/esp-hosted/archive/$(ESP_HOSTED_COMMIT).zip
+
 ifndef ESP_HAL_3RDPARTY_URL
 	ESP_HAL_3RDPARTY_URL = https://github.com/espressif/esp-hal-3rdparty.git
 endif
@@ -224,6 +230,7 @@ ifeq ($(CONFIG_ARCH_CHIP_ESP32P4_VENDOR),y)
 	$(Q) git -C chip/$(ESP_HAL_3RDPARTY_REPO) apply \
 		../patches/0004-nuttx-shared-interrupt-adapter.patch
 endif
+
 ifeq ($(CONFIG_ESP_WIRELESS),y)
 ifneq ($(USE_NXTMPDIR_ESP_REPO_DIRECTLY),y)
 	$(Q) echo "Espressif HAL for 3rd Party Platforms: initializing submodules..."
@@ -232,6 +239,18 @@ ifneq ($(USE_NXTMPDIR_ESP_REPO_DIRECTLY),y)
 endif
 	$(Q) echo "Applying patches..."
 	$(Q) cd chip/$(ESP_HAL_3RDPARTY_REPO)/components/mbedtls/mbedtls && git apply ../../../nuttx/patches/components/mbedtls/mbedtls/*.patch
+endif
+
+ifeq ($(CONFIG_VELAPOKA_WIFI),y)
+chip/$(ESP_HOSTED_REPO):
+	$(Q) echo "Downloading ESP-Hosted $(ESP_HOSTED_VERSION)"
+	$(Q) curl -L -Ss '$(ESP_HOSTED_URL)' -o esp-hosted.zip
+	$(Q) echo '$(ESP_HOSTED_SHA256)  esp-hosted.zip' | sha256sum -c -
+	$(Q) unzip -q esp-hosted.zip
+	$(Q) mv esp-hosted-$(ESP_HOSTED_COMMIT) chip/$(ESP_HOSTED_REPO)
+	$(Q) $(call DELFILE,esp-hosted.zip)
+	$(Q) patch -d chip/$(ESP_HOSTED_REPO) -p1 \
+		-i ../patches/0006-esp-hosted-openvela-port.patch
 endif
 
 include common$(DELIM)espressif$(DELIM)Bootloader.mk
@@ -261,10 +280,15 @@ context:: chip/$(ESP_HAL_3RDPARTY_REPO)
 	$(call COPYFILE,chip/$(ESP_HAL_3RDPARTY_REPO)/components/soc/$(CHIP_SERIES)/include/soc/gpio_sig_map.h,../include/chip/)
 	$(call COPYFILE,chip/$(ESP_HAL_3RDPARTY_REPO)/nuttx/$(CHIP_SERIES)/include/irq.h,../include/chip/)
 
+ifeq ($(CONFIG_VELAPOKA_WIFI),y)
+context:: chip/$(ESP_HOSTED_REPO)
+endif
+
 distclean::
 	$(call DELFILE,../include/chip/gpio_sig_map.h)
 	$(call DELFILE,../include/chip/irq.h)
 	$(call DELDIR,chip/$(ESP_HAL_3RDPARTY_REPO))
+	$(call DELDIR,chip/$(ESP_HOSTED_REPO))
 
 INCLUDES += ${INCDIR_PREFIX}$(ARCH_SRCDIR)$(DELIM)common$(DELIM)espressif
 INCLUDES += ${INCDIR_PREFIX}$(ARCH_SRCDIR)$(DELIM)common$(DELIM)espressif$(DELIM)platform_include

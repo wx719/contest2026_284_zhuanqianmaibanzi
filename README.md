@@ -9,7 +9,7 @@
 
 - `configs/nsh`：已在 ESP32-P4 rev3.2 实板验证的最小 UART/NSH 恢复系统。
 - `configs/velapoka`：产品配置，包含 PSRAM、GT911、MIPI-DSI framebuffer、
-  SC2336/CSI、EMAC、LVGL 和 VelaPoka 应用。
+  SC2336/CSI、EMAC、ESP32-C6 ESP-Hosted Wi-Fi、LVGL 和 VelaPoka 应用。
 
 当前已归档 M4 留档链路：在 M3 P0 检测基础上增加 MicroSD FAT 自动挂载、
 模板和阈值恢复、JSONL、FAIL 灰度 BMP、后台存储队列及最近历史显示。
@@ -32,6 +32,7 @@ Windows 读取验收；开机自启动、独立 Exit、队列排空、FAT 卸载
 | MIPI-DSI | EK79007，1024×600 RGB565 双 framebuffer | `/dev/fb0`；VSync 切屏实板确认无撕裂 |
 | SC2336/CSI | 1280×720 BGGR packed RAW10，30 fps | `/dev/video0`；`camtest preview 3 5000` 两次通过 |
 | Ethernet | NuttX `eth0` | 静态 IPv4 与主机双向 Ping 通过 |
+| Wi-Fi | ESP32-C6，经 SDIO/ESP-Hosted 注册 NuttX `wlan0` | 驱动层实板通过：4-bit/20 MHz、RPC、MAC、netdev 和 ready 位；产品暂不增加联网应用 |
 | MicroSD | SPI2，GPIO42/43/44/39，LDO4，FAT32 | `/dev/mmcsd0`、自动挂载、断电后 Windows 读取通过 |
 | LVGL | 1024×600 左右分屏产品界面 | 产品固件开机自启动；触摸正常，灰度预览稳定 15 fps 且无撕裂 |
 | BSP 状态 | 只读 JSON 字符设备 | `cat /dev/velapoka` |
@@ -50,6 +51,7 @@ Windows 读取验收；开机自启动、独立 Exit、队列排空、FAT 卸载
 - `board/contest_board/docs/m2-camera-preview-archive.md`：M2 实时预览实板验收归档。
 - `board/contest_board/docs/m4-storage-archive.md`：M4 MicroSD 留档、恢复和安全退出归档。
 - `board/contest_board/docs/velapoka-capture-storage-chain.md`：采集、检测与 SD 写入全链路。
+- `board/contest_board/docs/wifi-esp-hosted-bringup.md`：ESP32-C6 SDIO/ESP-Hosted 驱动边界与验收步骤。
 - `board/contest_board/include/board.h`：VelaPoka 板级资源表。
 - `board/contest_board/configs/{nsh,velapoka}/defconfig`：恢复配置与产品基础配置。
 - `board/contest_board/upstream/nuttx/`：构建基线所需的公共 NuttX 修复。

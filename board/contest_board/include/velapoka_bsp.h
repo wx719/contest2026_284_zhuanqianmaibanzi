@@ -24,6 +24,7 @@ struct i2c_master_s;
 #define VELAPOKA_CAP_MICROSD       (1u << 6)
 #define VELAPOKA_CAP_ETHERNET      (1u << 7)
 #define VELAPOKA_CAP_CONTROL_GPIO  (1u << 8)
+#define VELAPOKA_CAP_WIFI          (1u << 9)
 
 #define VELAPOKA_CAPABILITIES      (VELAPOKA_CAP_UART | \
                                     VELAPOKA_CAP_PSRAM | \
@@ -33,7 +34,8 @@ struct i2c_master_s;
                                     VELAPOKA_CAP_MIPI_CSI | \
                                     VELAPOKA_CAP_MICROSD | \
                                     VELAPOKA_CAP_ETHERNET | \
-                                    VELAPOKA_CAP_CONTROL_GPIO)
+                                    VELAPOKA_CAP_CONTROL_GPIO | \
+                                    VELAPOKA_CAP_WIFI)
 
 /* Bits in the ready mask use the same values as the capability mask. */
 

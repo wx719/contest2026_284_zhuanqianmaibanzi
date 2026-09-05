@@ -4,7 +4,7 @@
 > 开启新会话后，应先阅读本文档，再查看 `git status` 和相关实板日志。
 > 完成与比赛功能有关的工作后，应同步更新“当前进度”“下一步”和“变更记录”。
 
-- 最后更新：2026-08-31
+- 最后更新：2026-09-05
 - 当前阶段：M4 已归档，返回 M3 完成三类样本标定；M4 保留项并入 M6 回归
 - 比赛截止：2026-09-20
 - 功能冻结目标：2026-09-18
@@ -51,6 +51,7 @@ P0 目标是形成“录入标准件 → 拍摄 → 检测 → 显示 → 留档
 | 相机预览 | M2 实板验收通过 | 512×288 灰度预览稳定 15 fps；下一 VSync 绘制门控确认无撕裂 | M3 接入检测时回归帧率，长时间压力测试并入 M6 |
 | MicroSD | M4 归档通过 | SPI2 `M4HW` 经卸载、断电后 Windows 可读；模板、JSONL、配置和 FAIL BMP 可见；触屏 Exit 排空队列并卸载 FAT | M6 在 PC 打开 FAIL BMP，并做长时间并发回归 |
 | Ethernet | 基础链路已验证 | `eth0` 静态 IPv4 双向 Ping | DHCP 回退和 HTTP 服务 |
+| Wi-Fi | 驱动层实板验收通过 | ESP32-C6 SDIO 4-bit/20 MHz、ESP-Hosted RPC、STA 启动、MAC 获取及 `wlan0` 注册通过；`ready=0x33f` 包含 Wi-Fi 位 | 后续如需联网功能，再以测试镜像验证扫描、关联、DHCP 和双向收发；产品暂不增加 Wi-Fi 应用 |
 | LVGL | M2 双缓冲实板验收通过 | 实时 RGB565 Image 使用一次缩放和色彩转换；双 framebuffer/VSync 下稳定 15 fps、无撕裂 | M3 叠加检测结果时回归刷新稳定性 |
 | 产品应用 | M4 归档通过 | 上电自动进入应用；`loaded=9 duplicates=1 next=10` 后生成 `#10` PASS；独立 Exit 停相机、卸载 FAT 并返回 NSH | 完成 M3 样本标定；M6 核对最近 3 条历史顺序 |
 | AI/比赛日志 | 已有基础 | `logs/wx719/` 已归集部分会话 | 持续归集、脱敏、校验 manifest |
@@ -403,3 +404,4 @@ velapoka
 | 2026-08-31 | M4 长按安全退出实板通过 | 启动识别 1 条重复旧 ID 并从 `#8` 续号，连续生成 `#8`、`#9` FAIL 后长按 Stop；串口确认相机 stream off、存储卸载、`safe shutdown complete` 并返回 `nsh>`，未出现存储错误。 |
 | 2026-08-31 | 修复 M4 产品固件未自动进入应用 | 实板反馈 ROMFS 启动脚本未生效，改为板级 bring-up 成功后直接创建 `velapoka_main` 任务，优先级 100、栈 16 KiB，并保留 NSH 维护入口；机器码确认 `board_app_initialize()` 直接调用 `task_create()` 且入口地址为 `velapoka_main`。产品固件完整构建通过，SHA-256 为 `08dc9eae1e52e2b0f4cb40fb6d79fdc6af3f1786f132531c4339539e5f694b60`。 |
 | 2026-08-31 | M4 自动启动与独立 Exit 实板通过并归档 | 无需命令自动进入应用，恢复日志为 `loaded=9 duplicates=1 skipped=0 next=10`；录入后生成 `#10` PASS，触屏 Exit 依次停止 CSI、关闭 sensor、卸载 FAT 并返回 NSH。M4 核心功能归档，BMP 视觉检查和最近历史顺序转入 M6。 |
+| 2026-09-05 | 增加并完成板载 ESP32-C6 Wi-Fi 驱动适配 | 以 SDIO 4-bit/20 MHz 接入 ESP-Hosted 0.0.6；实板完成 CMD5 枚举、INIT event、Wi-Fi RPC、MAC 获取与 `wlan0` 注册，`ifconfig` 显示 MAC `10:bd:a3:8a:bc:55`，`/dev/velapoka` 返回 `ready=0x0000033f`。本阶段不新增 Wi-Fi 应用，扫描、关联和数据收发不计入验收。 |

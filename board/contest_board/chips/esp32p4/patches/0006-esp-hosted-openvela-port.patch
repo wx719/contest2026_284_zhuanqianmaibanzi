@@ -1,0 +1,1356 @@
+diff --git a/host/drivers/rpc/core/rpc_req.c b/host/drivers/rpc/core/rpc_req.c
+index 00de07a..92ef251 100644
+--- a/host/drivers/rpc/core/rpc_req.c
++++ b/host/drivers/rpc/core/rpc_req.c
+@@ -241,7 +241,7 @@ int compose_rpc_req(Rpc *req, ctrl_cmd_t *app_req, int32_t *failure_status)
+ 			if (p_a_sta->transition_disable)
+ 				H_SET_BIT(STA_TRASITION_DISABLED_BIT, p_c_sta->bitmask);
+ 
+-			WIFI_CONFIG_STA_SET_RESERVED_VAL(p_a_sta->reserved, p_c_sta->bitmask);
++			WIFI_CONFIG_STA_SET_RESERVED_VAL(p_a_sta->reserved1, p_c_sta->bitmask);
+ 
+ 			p_c_sta->sae_pwe_h2e = p_a_sta->sae_pwe_h2e;
+ 			p_c_sta->failure_retry_cnt = p_a_sta->failure_retry_cnt;
+@@ -272,7 +272,7 @@ int compose_rpc_req(Rpc *req, ctrl_cmd_t *app_req, int32_t *failure_status)
+ 			if (p_a_sta->he_trig_cqi_feedback_disabled)
+ 				H_SET_BIT(WIFI_HE_STA_CONFIG_he_trig_cqi_feedback_disabled_BIT, p_c_sta->he_bitmask);
+ 
+-			WIFI_HE_STA_SET_RESERVED_VAL(p_a_sta->he_reserved, p_c_sta->he_bitmask);
++			WIFI_HE_STA_SET_RESERVED_VAL(p_a_sta->reserved2, p_c_sta->he_bitmask);
+ 
+ 			RPC_REQ_COPY_BYTES(p_c_sta->sae_h2e_identifier, p_a_sta->sae_h2e_identifier, SAE_H2E_IDENTIFIER_LEN);
+ 			break;
+diff --git a/host/drivers/rpc/core/rpc_rsp.c b/host/drivers/rpc/core/rpc_rsp.c
+index 1a7bbb2..61441ba 100644
+--- a/host/drivers/rpc/core/rpc_rsp.c
++++ b/host/drivers/rpc/core/rpc_rsp.c
+@@ -193,7 +193,7 @@ int rpc_parse_rsp(Rpc *rpc_msg, ctrl_cmd_t *app_resp)
+ 			p_a_sta->ft_enabled = H_GET_BIT(STA_FT_ENABLED_BIT, p_c_sta->bitmask);
+ 			p_a_sta->owe_enabled = H_GET_BIT(STA_OWE_ENABLED_BIT, p_c_sta->bitmask);
+ 			p_a_sta->transition_disable = H_GET_BIT(STA_TRASITION_DISABLED_BIT, p_c_sta->bitmask);
+-			p_a_sta->reserved = WIFI_CONFIG_STA_GET_RESERVED_VAL(p_c_sta->bitmask);
++			p_a_sta->reserved1 = WIFI_CONFIG_STA_GET_RESERVED_VAL(p_c_sta->bitmask);
+ 
+ 			p_a_sta->sae_pwe_h2e = p_c_sta->sae_pwe_h2e;
+ 			p_a_sta->failure_retry_cnt = p_c_sta->failure_retry_cnt;
+diff --git a/host/drivers/rpc/wrap/rpc_wrap.c b/host/drivers/rpc/wrap/rpc_wrap.c
+index 30a7f7a..7d25501 100644
+--- a/host/drivers/rpc/wrap/rpc_wrap.c
++++ b/host/drivers/rpc/wrap/rpc_wrap.c
+@@ -29,7 +29,6 @@
+ #include "rpc_wrap.h"
+ #include "rpc_common.h"
+ #include "esp_log.h"
+-#include "esp_http_client.h"
+ 
+ DEFINE_LOG_TAG(rpc_wrap);
+ static char* OTA_TAG = "h_ota";
+@@ -44,7 +43,7 @@ uint8_t restart_after_slave_ota = 0;
+ #define VENDOR_OUI_TYPE                                   22
+ #define CHUNK_SIZE                                        1400
+ #define OTA_BEGIN_RSP_TIMEOUT_SEC                         15
+-#define OTA_FROM_WEB_URL                                  1
++#define OTA_FROM_WEB_URL                                  0
+ 
+ 
+ #define RPC_DEFAULT_REQ() {                              \
+@@ -834,7 +833,7 @@ int rpc_ota_end(void)
+ 
+ #if !OTA_FROM_WEB_URL
+ /* This assumes full slave binary is present locally */
+-int rpc_ota(char* image_path)
++esp_err_t rpc_ota(const char *image_path)
+ {
+ 	FILE* f = NULL;
+ 	char ota_chunk[CHUNK_SIZE] = {0};
+diff --git a/host/drivers/serial/serial_ll_if.c b/host/drivers/serial/serial_ll_if.c
+index c43096e..45d3a9e 100644
+--- a/host/drivers/serial/serial_ll_if.c
++++ b/host/drivers/serial/serial_ll_if.c
+@@ -78,7 +78,7 @@ static int serial_ll_open(serial_ll_handle_t *serial_ll_hdl)
+ 
+ 	if (serial_ll_hdl->queue) {
+ 		/* clean up earlier queue */
+-		vQueueDelete(serial_ll_hdl->queue);
++		g_h.funcs->_h_destroy_queue(serial_ll_hdl->queue);
+ 	}
+ 
+ 	/* Queue - serial rx */
+@@ -120,7 +120,7 @@ static int serial_ll_close(serial_ll_handle_t * serial_ll_hdl)
+ 	serial_ll_hdl->state = DESTROY;
+ 
+ 	if (serial_ll_hdl->queue) {
+-		vQueueDelete(serial_ll_hdl->queue);
++		g_h.funcs->_h_destroy_queue(serial_ll_hdl->queue);
+ 		serial_ll_hdl->queue = NULL;
+ 	}
+ 
+diff --git a/host/drivers/transport/transport_drv.c b/host/drivers/transport/transport_drv.c
+index 6e5b57f..b7c2c02 100644
+--- a/host/drivers/transport/transport_drv.c
++++ b/host/drivers/transport/transport_drv.c
+@@ -215,11 +215,7 @@ static esp_err_t transport_drv_sta_tx(void *h, void *buffer, size_t len)
+ 	#endif
+ 		errno = -ENOBUFS;
+ 		//return ESP_ERR_NO_BUFFS;
+-#if defined(ESP_ERR_ESP_NETIF_TX_FAILED)
+-		return ESP_ERR_ESP_NETIF_TX_FAILED;
+-#else
+-		return ESP_ERR_ESP_NETIF_NO_MEM;
+-#endif
++		return ESP_ERR_NO_MEM;
+ 	}
+ 
+ 	assert(h && h==chan_arr[ESP_STA_IF]->api_chan);
+diff --git a/host/drivers/transport/transport_drv.h b/host/drivers/transport/transport_drv.h
+index 2b7d43b..461e243 100644
+--- a/host/drivers/transport/transport_drv.h
++++ b/host/drivers/transport/transport_drv.h
+@@ -116,7 +116,7 @@ uint8_t is_transport_tx_ready(void);
+ 
+ #define H_DEFLT_FREE_FUNC g_h.funcs->_h_free
+ 
+-#define MAX_RETRY_TRANSPORT_ACTIVE 1000
++#define MAX_RETRY_TRANSPORT_ACTIVE 15
+ 
+ 
+ int esp_hosted_tx(uint8_t iface_type, uint8_t iface_num,
+diff --git a/host/port/esp_hosted_config.h b/host/port/esp_hosted_config.h
+index c4b7618..8bf631c 100644
+--- a/host/port/esp_hosted_config.h
++++ b/host/port/esp_hosted_config.h
+@@ -10,10 +10,6 @@
+ #include "hosted_os_adapter.h"
+ #include "adapter.h"
+ 
+-#ifdef CONFIG_ESP_SDIO_HOST_INTERFACE
+-#include "driver/sdmmc_host.h"
+-#endif
+-
+ /* This file is to tune the main ESP-Hosted configurations.
+  * In case you are not sure of some value, Let it be default.
+  **/
+@@ -112,7 +108,7 @@ so feel free to change these if needed.
+ 
+ #define H_SDIO_CLOCK_FREQ                            CONFIG_ESP_SDIO_CLOCK_FREQ
+ #define H_SDIO_BUS_WIDTH                             CONFIG_ESP_SDIO_BUS_WIDTH
+-#define H_SDMMC_HOST_SLOT                            SDMMC_HOST_SLOT_1
++#define H_SDMMC_HOST_SLOT                            1
+ #define H_SDIO_CLOCK_FREQ                            CONFIG_ESP_SDIO_CLOCK_FREQ
+ 
+ #ifdef H_SDIO_SOC_USE_GPIO_MATRIX
+@@ -169,7 +165,7 @@ so feel free to change these if needed.
+   #define H_RESET_ACTIVE_HIGH                           1
+ #endif
+ 
+-#ifdef H_RESET_ACTIVE_HIGH
++#if H_RESET_ACTIVE_HIGH
+   #define H_RESET_VAL_ACTIVE                            H_GPIO_HIGH
+   #define H_RESET_VAL_INACTIVE                          H_GPIO_LOW
+ #else
+diff --git a/host/port/os_header.h b/host/port/os_header.h
+index 46105aa..c34b528 100644
+--- a/host/port/os_header.h
++++ b/host/port/os_header.h
+@@ -4,11 +4,17 @@
+ #ifndef __OS_HEADER_H
+ #define __OS_HEADER_H
+ 
++#include <pthread.h>
++#include <semaphore.h>
++
++#include <nuttx/mutex.h>
++
+ #include "freertos/FreeRTOS.h"
+ #include "freertos/task.h"
+-#include "freertos/semphr.h"
+-#include "freertos/queue.h"
+-#include "freertos/event_groups.h"
++
++#ifndef pdMS_TO_TICKS
++#  define pdMS_TO_TICKS(ms) MSEC2TICK(ms)
++#endif
+ 
+ #ifndef DEFINE_LOG_TAG
+ #define DEFINE_LOG_TAG(sTr) static const char TAG[] = #sTr
+diff --git a/host/port/os_wrapper.c b/host/port/os_wrapper.c
+index e7ec67d..d4d992b 100644
+--- a/host/port/os_wrapper.c
++++ b/host/port/os_wrapper.c
+@@ -13,13 +13,22 @@
+ // See the License for the specific language governing permissions and
+ // limitations under the License.
+ 
+-#include "string.h"
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <stdint.h>
++#include <string.h>
++#include <unistd.h>
++
++#include <nuttx/clock.h>
++#include <nuttx/mutex.h>
++#include <nuttx/semaphore.h>
+ #include "esp_log.h"
+ #include "os_wrapper.h"
+ #include "esp_log.h"
+ #include "driver/gpio.h"
+ #include "esp_event.h"
+-#include "freertos/portmacro.h"
+ #include "esp_macros.h"
+ #include "esp_hosted_config.h"
+ 
+@@ -51,6 +60,50 @@ struct timer_handle_t {
+ 	esp_timer_handle_t timer_id;
+ };
+ 
++void hosted_free(void *ptr);
++
++struct hosted_thread_start_s {
++	void (*entry)(void const *arg);
++	void *arg;
++};
++
++typedef struct {
++	mutex_t lock;
++	sem_t items;
++	sem_t slots;
++	uint8_t *buffer;
++	uint32_t capacity;
++	uint32_t item_size;
++	uint32_t head;
++	uint32_t tail;
++	uint32_t count;
++} hosted_queue_t;
++
++static void *hosted_thread_trampoline(void *arg)
++{
++	struct hosted_thread_start_s *start = arg;
++	void (*entry)(void const *arg) = start->entry;
++	void *entry_arg = start->arg;
++
++	hosted_free(start);
++	entry(entry_arg);
++	return NULL;
++}
++
++static int hosted_sem_wait(sem_t *sem, int timeout, bool seconds)
++{
++	if (timeout == HOSTED_NON_BLOCKING) {
++		return nxsem_trywait(sem);
++	}
++
++	if (timeout < 0 || (uint32_t)timeout == HOSTED_BLOCK_MAX) {
++		return nxsem_wait_uninterruptible(sem);
++	}
++
++	return nxsem_tickwait_uninterruptible(sem,
++		seconds ? SEC2TICK(timeout) : timeout);
++}
++
+ /* -------- Memory ---------- */
+ 
+ void * hosted_memcpy(void* dest, const void* src, uint32_t size)
+@@ -100,22 +153,7 @@ void hosted_free(void* ptr)
+ 
+ void *hosted_realloc(void *mem, size_t newsize)
+ {
+-	void *p = NULL;
+-
+-	if (newsize == 0) {
+-		HOSTED_FREE(mem);
+-		return NULL;
+-	}
+-
+-	p = hosted_malloc(newsize);
+-	if (p) {
+-		/* zero the memory */
+-		if (mem != NULL) {
+-			hosted_memcpy(p, mem, newsize);
+-			HOSTED_FREE(mem);
+-		}
+-	}
+-	return p;
++	return realloc(mem, newsize);
+ }
+ 
+ 
+@@ -129,41 +167,48 @@ void hosted_init_hook(void)
+ 
+ void *hosted_thread_create(char *tname, uint32_t tprio, uint32_t tstack_size, void (*start_routine)(void const *), void *sr_arg)
+ {
+-	int task_created = RET_OK;
++	pthread_attr_t attr;
++	struct sched_param param;
++	struct hosted_thread_start_s *start;
++	thread_handle_t *thread_handle;
++	int ret;
+ 
+ 	if (!start_routine) {
+ 		ESP_LOGE(TAG, "start_routine is mandatory for thread create\n");
+ 		return NULL;
+ 	}
+ 
+-	thread_handle_t *thread_handle = (thread_handle_t *)hosted_malloc(
+-			sizeof(thread_handle_t));
++	thread_handle = (thread_handle_t *)hosted_malloc(sizeof(*thread_handle));
+ 	if (!thread_handle) {
+ 		ESP_LOGE(TAG, "Failed to allocate thread handle\n");
+ 		return NULL;
+ 	}
+ 
+-#if 0
+-	osThreadDef(
+-			Ctrl_port_tsk,
+-			start_routine,
+-			CTRL_PATH_TASK_PRIO, 0,
+-			CTRL_PATH_TASK_STACK_SIZE);
+-	*thread_handle = osThreadCreate(osThread(Ctrl_port_tsk), arg);
+-#endif
+-	task_created = xTaskCreate((void (*)(void *))start_routine, tname, tstack_size, sr_arg, tprio, thread_handle);
+-	if (!(*thread_handle)) {
+-		ESP_LOGE(TAG, "Failed to create thread: %s\n", tname);
++	start = hosted_malloc(sizeof(*start));
++	if (!start) {
+ 		HOSTED_FREE(thread_handle);
+ 		return NULL;
+ 	}
+ 
+-	if (task_created != pdTRUE) {
+-		ESP_LOGE(TAG, "Failed 2 to create thread: %s\n", tname);
++	start->entry = start_routine;
++	start->arg = sr_arg;
++	pthread_attr_init(&attr);
++	pthread_attr_setstacksize(&attr, tstack_size);
++	param.sched_priority = (int)tprio;
++	pthread_attr_setschedparam(&attr, &param);
++	ret = pthread_create(thread_handle, &attr, hosted_thread_trampoline, start);
++	pthread_attr_destroy(&attr);
++	if (ret != 0) {
++		ESP_LOGE(TAG, "Failed to create thread %s: %d\n", tname, ret);
++		hosted_free(start);
+ 		HOSTED_FREE(thread_handle);
+ 		return NULL;
+ 	}
+ 
++#ifdef CONFIG_PTHREAD_SETNAME_NP
++	pthread_setname_np(*thread_handle, tname);
++#endif
++
+ 	return thread_handle;
+ }
+ 
+@@ -185,7 +230,8 @@ int hosted_thread_cancel(void *thread_handle)
+ 	//	HOSTED_FREE(thread_handle);
+ 	//	return RET_INVALID;
+ 	//}
+-	vTaskDelete(*thread_hdl);
++	pthread_cancel(*thread_hdl);
++	pthread_join(*thread_hdl, NULL);
+ 
+ 	HOSTED_FREE(thread_handle);
+ 	return RET_OK;
+@@ -194,10 +240,8 @@ int hosted_thread_cancel(void *thread_handle)
+ /* -------- Sleeps -------------- */
+ unsigned int hosted_msleep(unsigned int mseconds)
+ {
+-   //osDelay(mseconds);
+-   vTaskDelay(pdMS_TO_TICKS(mseconds));
+-   //usleep(mseconds*1000UL);
+-   return 0;
++	usleep((useconds_t)mseconds * 1000);
++	return 0;
+ }
+ 
+ unsigned int hosted_sleep(unsigned int seconds)
+@@ -221,203 +265,185 @@ unsigned int hosted_for_loop_delay(unsigned int number)
+ /* User expected to pass item's address to this func eg. &item */
+ int hosted_queue_item(void * queue_handle, void *item, int timeout)
+ {
+-	queue_handle_t *q_id = NULL;
+-	int item_added_in_back = 0;
++	hosted_queue_t *queue = queue_handle;
++	int ret;
+ 
+-	if (!queue_handle) {
+-		ESP_LOGE(TAG, "Uninitialized sem id 3\n");
++	if (!queue || !item) {
+ 		return RET_INVALID;
+ 	}
+ 
+-	q_id = (queue_handle_t *)queue_handle;
+-	item_added_in_back = xQueueSendToBack(*q_id, item, timeout);
+-	if (pdTRUE == item_added_in_back)
+-		return RET_OK;
++	ret = hosted_sem_wait(&queue->slots, timeout, false);
++	if (ret < 0) {
++		return RET_FAIL;
++	}
+ 
+-	return RET_FAIL;
++	nxmutex_lock(&queue->lock);
++	memcpy(queue->buffer + queue->tail * queue->item_size,
++		item, queue->item_size);
++	queue->tail = (queue->tail + 1) % queue->capacity;
++	queue->count++;
++	nxmutex_unlock(&queue->lock);
++	nxsem_post(&queue->items);
++
++	return RET_OK;
+ }
+ 
+ void * hosted_create_queue(uint32_t qnum_elem, uint32_t qitem_size)
+ {
+-	queue_handle_t *q_id = NULL;
++	hosted_queue_t *queue;
+ 
+-	q_id = (queue_handle_t*)hosted_malloc(
+-			sizeof(queue_handle_t));
+-	if (!q_id) {
+-		ESP_LOGE(TAG, "Q allocation failed\n");
++	if (qnum_elem == 0 || qitem_size == 0) {
+ 		return NULL;
+ 	}
+ 
+-	*q_id = xQueueCreate(qnum_elem, qitem_size);
+-	if (!*q_id) {
++	queue = hosted_calloc(1, sizeof(*queue));
++	if (!queue) {
++		return NULL;
++	}
++
++	queue->buffer = hosted_malloc(qnum_elem * qitem_size);
++	if (!queue->buffer) {
+ 		ESP_LOGE(TAG, "Q create failed\n");
++		hosted_free(queue);
+ 		return NULL;
+ 	}
+ 
+-	return q_id;
++	queue->capacity = qnum_elem;
++	queue->item_size = qitem_size;
++	nxmutex_init(&queue->lock);
++	nxsem_init(&queue->items, 0, 0);
++	nxsem_init(&queue->slots, 0, qnum_elem);
++	return queue;
+ }
+ 
+ 
+ /* User expected to pass item's address to this func eg. &item */
+ int hosted_dequeue_item(void * queue_handle, void *item, int timeout)
+ {
+-	queue_handle_t *q_id = NULL;
+-	int item_retrieved = 0;
+-
+-	if (!queue_handle) {
+-		ESP_LOGE(TAG, "Uninitialized Q id 1\n\r");
+-		return RET_INVALID;
+-	}
++	hosted_queue_t *queue = queue_handle;
++	int ret;
+ 
+-	q_id = (queue_handle_t *)queue_handle;
+-	if (!*q_id) {
+-		ESP_LOGE(TAG, "Uninitialized Q id 2\n\r");
++	if (!queue || !item) {
+ 		return RET_INVALID;
+ 	}
+ 
+-	if (!timeout) {
+-		/* non blocking */
+-		item_retrieved = xQueueReceive(*q_id, item, 0);
+-	} else if (timeout<0) {
+-		/* Blocking */
+-		item_retrieved = xQueueReceive(*q_id, item, HOSTED_BLOCK_MAX);
+-	} else {
+-		item_retrieved = xQueueReceive(*q_id, item, pdMS_TO_TICKS(SEC_TO_MILLISEC(timeout)));
++	ret = hosted_sem_wait(&queue->items, timeout, true);
++	if (ret < 0) {
++		return RET_FAIL;
+ 	}
+ 
+-	if (item_retrieved == pdTRUE)
+-		return 0;
+-
+-	return RET_FAIL;
++	nxmutex_lock(&queue->lock);
++	memcpy(item, queue->buffer + queue->head * queue->item_size,
++		queue->item_size);
++	queue->head = (queue->head + 1) % queue->capacity;
++	queue->count--;
++	nxmutex_unlock(&queue->lock);
++	nxsem_post(&queue->slots);
++	return RET_OK;
+ }
+ 
+ int hosted_queue_msg_waiting(void * queue_handle)
+ {
+-	queue_handle_t *q_id = NULL;
+-	if (!queue_handle) {
+-		ESP_LOGE(TAG, "Uninitialized sem id 9\n");
++	hosted_queue_t *queue = queue_handle;
++	uint32_t count;
++
++	if (!queue) {
+ 		return RET_INVALID;
+ 	}
+ 
+-	q_id = (queue_handle_t *)queue_handle;
+-	return uxQueueMessagesWaiting(*q_id);
++	nxmutex_lock(&queue->lock);
++	count = queue->count;
++	nxmutex_unlock(&queue->lock);
++	return count;
+ }
+ 
+ int hosted_destroy_queue(void * queue_handle)
+ {
+-	int ret = RET_OK;
+-	queue_handle_t *q_id = NULL;
++	hosted_queue_t *queue = queue_handle;
+ 
+-	if (!queue_handle) {
+-		ESP_LOGE(TAG, "Uninitialized Q id 4\n");
++	if (!queue) {
+ 		return RET_INVALID;
+ 	}
+ 
+-	q_id = (queue_handle_t *)queue_handle;
+-
+-	vQueueDelete(*q_id);
+-
+-	HOSTED_FREE(queue_handle);
+-
+-	return ret;
++	nxsem_destroy(&queue->items);
++	nxsem_destroy(&queue->slots);
++	nxmutex_destroy(&queue->lock);
++	hosted_free(queue->buffer);
++	hosted_free(queue);
++	return RET_OK;
+ }
+ 
+ 
+ int hosted_reset_queue(void * queue_handle)
+ {
+-	queue_handle_t *q_id = NULL;
++	hosted_queue_t *queue = queue_handle;
++	uint32_t count;
+ 
+-	if (!queue_handle) {
+-		ESP_LOGE(TAG, "Uninitialized Q id 5\n");
++	if (!queue) {
+ 		return RET_INVALID;
+ 	}
+ 
+-	q_id = (queue_handle_t *)queue_handle;
++	nxmutex_lock(&queue->lock);
++	count = queue->count;
++	queue->head = 0;
++	queue->tail = 0;
++	queue->count = 0;
++	nxmutex_unlock(&queue->lock);
++
++	while (count-- > 0) {
++		nxsem_trywait(&queue->items);
++		nxsem_post(&queue->slots);
++	}
+ 
+-	return xQueueReset(*q_id);
++	return RET_OK;
+ }
+ 
+ /* -------- Mutex --------------- */
+ 
+ int hosted_unlock_mutex(void * mutex_handle)
+ {
+-	mutex_handle_t *mut_id = NULL;
+-	int mut_unlocked = 0;
+-
+ 	if (!mutex_handle) {
+-		ESP_LOGE(TAG, "Uninitialized mut id 3\n");
+ 		return RET_INVALID;
+ 	}
+ 
+-	mut_id = (mutex_handle_t *)mutex_handle;
+-
+-	mut_unlocked = xSemaphoreGive(*mut_id);
+-	if (mut_unlocked)
+-		return 0;
+-
+-	return RET_FAIL;
++	return nxmutex_unlock(mutex_handle) < 0 ? RET_FAIL : RET_OK;
+ }
+ 
+ void * hosted_create_mutex(void)
+ {
+-	mutex_handle_t *mut_id = NULL;
+-
+-	mut_id = (mutex_handle_t*)hosted_malloc(
+-			sizeof(mutex_handle_t));
++	mutex_t *mut_id = hosted_malloc(sizeof(*mut_id));
+ 
+ 	if (!mut_id) {
+ 		ESP_LOGE(TAG, "mut allocation failed\n");
+ 		return NULL;
+ 	}
+ 
+-	*mut_id = xSemaphoreCreateMutex();
+-	if (!*mut_id) {
++	if (nxmutex_init(mut_id) < 0) {
+ 		ESP_LOGE(TAG, "mut create failed\n");
++		hosted_free(mut_id);
+ 		return NULL;
+ 	}
+ 
+-	//hosted_unlock_mutex(*mut_id);
+-
+ 	return mut_id;
+ }
+ 
+ 
+ int hosted_lock_mutex(void * mutex_handle, int timeout)
+ {
+-	mutex_handle_t *mut_id = NULL;
+-	int mut_locked = 0;
+-
+ 	if (!mutex_handle) {
+-		ESP_LOGE(TAG, "Uninitialized mut id 1\n\r");
+ 		return RET_INVALID;
+ 	}
+ 
+-	mut_id = (mutex_handle_t *)mutex_handle;
+-	if (!*mut_id) {
+-		ESP_LOGE(TAG, "Uninitialized mut id 2\n\r");
+-		return RET_INVALID;
+-	}
+-
+-	mut_locked = xSemaphoreTake(*mut_id, HOSTED_BLOCK_MAX);
+-	if (mut_locked == pdTRUE)
+-		return 0;
+-
+-	return RET_FAIL;
++	return nxmutex_lock(mutex_handle) < 0 ? RET_FAIL : RET_OK;
+ }
+ 
+ int hosted_destroy_mutex(void * mutex_handle)
+ {
+-	mutex_handle_t *mut_id = NULL;
+-
+ 	if (!mutex_handle) {
+-		ESP_LOGE(TAG, "Uninitialized mut id 4\n");
+ 		return RET_INVALID;
+ 	}
+ 
+-	mut_id = (mutex_handle_t *)mutex_handle;
+-
+-	vSemaphoreDelete(*mut_id);
+-
++	nxmutex_destroy(mutex_handle);
+ 	HOSTED_FREE(mutex_handle);
+ 
+ 	return RET_OK;
+@@ -426,126 +452,59 @@ int hosted_destroy_mutex(void * mutex_handle)
+ /* -------- Semaphores ---------- */
+ int hosted_post_semaphore(void * semaphore_handle)
+ {
+-	semaphore_handle_t *sem_id = NULL;
+-	int sem_posted = 0;
+-
+ 	if (!semaphore_handle) {
+-		ESP_LOGE(TAG, "Uninitialized sem id 3\n");
+ 		return RET_INVALID;
+ 	}
+ 
+-	sem_id = (semaphore_handle_t *)semaphore_handle;
+-	sem_posted = xSemaphoreGive(*sem_id);
+-	if (pdTRUE == sem_posted)
+-		return RET_OK;
+-
+-	return RET_FAIL;
++	return nxsem_post(semaphore_handle) < 0 ? RET_FAIL : RET_OK;
+ }
+ 
+ FAST_RAM_ATTR int hosted_post_semaphore_from_isr(void * semaphore_handle)
+ {
+-	semaphore_handle_t *sem_id = NULL;
+-	int sem_posted = 0;
+-	BaseType_t mustYield = false;
+-
+ 	if (!semaphore_handle) {
+-		ESP_LOGE(TAG, "Uninitialized sem id 3\n");
+ 		return RET_INVALID;
+ 	}
+ 
+-	sem_id = (semaphore_handle_t *)semaphore_handle;
+-
+-	sem_posted = xSemaphoreGiveFromISR(*sem_id, &mustYield);
+-	if (mustYield) {
+-#if defined(__cplusplus) && (__cplusplus >  201703L)
+-		portYIELD_FROM_ISR(mustYield);
+-#else
+-		portYIELD_FROM_ISR();
+-#endif
+-	}
+-	if (pdTRUE == sem_posted)
+-		return RET_OK;
+-
+-	return RET_FAIL;
++	return nxsem_post(semaphore_handle) < 0 ? RET_FAIL : RET_OK;
+ }
+ 
+ void * hosted_create_semaphore(int maxCount)
+ {
+-	semaphore_handle_t *sem_id = NULL;
+-
+-	sem_id = (semaphore_handle_t*)hosted_malloc(
+-			sizeof(semaphore_handle_t));
++	sem_t *sem_id = hosted_malloc(sizeof(*sem_id));
+ 	if (!sem_id) {
+ 		ESP_LOGE(TAG, "Sem allocation failed\n");
+ 		return NULL;
+ 	}
+ 
+-	if (maxCount>1)
+-		*sem_id = xSemaphoreCreateCounting(maxCount,0);
+-	else
+-		*sem_id = xSemaphoreCreateBinary();
+-
+-	if (!*sem_id) {
++	if (nxsem_init(sem_id, 0, 1) < 0) {
+ 		ESP_LOGE(TAG, "sem create failed\n");
++		hosted_free(sem_id);
+ 		return NULL;
+ 	}
+ 
+-	xSemaphoreGive(*sem_id);
+-
+ 	return sem_id;
+ }
+ 
+ 
+ int hosted_get_semaphore(void * semaphore_handle, int timeout)
+ {
+-	semaphore_handle_t *sem_id = NULL;
+-	int sem_acquired = 0;
+-
+ 	if (!semaphore_handle) {
+-		ESP_LOGE(TAG, "Uninitialized sem id 1\n\r");
+-		return RET_INVALID;
+-	}
+-
+-	sem_id = (semaphore_handle_t *)semaphore_handle;
+-	if (!*sem_id) {
+-		ESP_LOGE(TAG, "Uninitialized sem id 2\n\r");
+ 		return RET_INVALID;
+ 	}
+ 
+-	if (!timeout) {
+-		/* non blocking */
+-		sem_acquired = xSemaphoreTake(*sem_id, 0);
+-	} else if (timeout<0) {
+-		/* Blocking */
+-		sem_acquired = xSemaphoreTake(*sem_id, HOSTED_BLOCK_MAX);
+-	} else {
+-		sem_acquired = xSemaphoreTake(*sem_id, pdMS_TO_TICKS(SEC_TO_MILLISEC(timeout)));
+-	}
+-
+-	if (sem_acquired == pdTRUE)
+-		return 0;
+-
+-	return RET_FAIL;
++	return hosted_sem_wait(semaphore_handle, timeout, true) < 0 ?
++		RET_FAIL : RET_OK;
+ }
+ 
+ int hosted_destroy_semaphore(void * semaphore_handle)
+ {
+-	int ret = RET_OK;
+-	semaphore_handle_t *sem_id = NULL;
+-
+ 	if (!semaphore_handle) {
+-		ESP_LOGE(TAG, "Uninitialized sem id 4\n");
+-		assert(semaphore_handle);
+ 		return RET_INVALID;
+ 	}
+ 
+-	sem_id = (semaphore_handle_t *)semaphore_handle;
+-
+-	vSemaphoreDelete(*sem_id);
+-
++	nxsem_destroy(semaphore_handle);
+ 	HOSTED_FREE(semaphore_handle);
+-
+-	return ret;
++	return RET_OK;
+ }
+ 
+ #ifdef CONFIG_USE_MEMPOOL
+@@ -740,7 +699,7 @@ void hosted_log_write(int  level,
+ {
+ 	va_list list;
+ 	va_start(list, format);
+-	printf(format, list);
++	vprintf(format, list);
+ 	va_end(list);
+ }
+ 
+diff --git a/host/port/os_wrapper.h b/host/port/os_wrapper.h
+index 3f535c8..d687aaf 100644
+--- a/host/port/os_wrapper.h
++++ b/host/port/os_wrapper.h
+@@ -17,7 +17,6 @@
+ #include "hosted_os_adapter.h"
+ #include "esp_timer.h"
+ #include "esp_event.h"
+-#include "esp_netif_types.h"
+ #include "esp_wifi_types.h"
+ #include "esp_wifi_default.h"
+ 
+@@ -26,7 +25,7 @@ ESP_EVENT_DECLARE_BASE(WIFI_EVENT);
+ #define MCU_SYS                                      1
+ 
+ #include "common.h"
+-#include "esp_dma_utils.h"
++#include "esp_heap_caps.h"
+ 
+ #define MAX_PAYLOAD_SIZE (MAX_TRANSPORT_BUFFER_SIZE-H_ESP_PAYLOAD_HEADER_OFFSET)
+ 
+@@ -37,12 +36,12 @@ ESP_EVENT_DECLARE_BASE(WIFI_EVENT);
+ #define HOSTED_BLOCKING                              -1
+ #define HOSTED_NON_BLOCKING                          0
+ 
+-#define thread_handle_t                              TaskHandle_t
+-#define queue_handle_t                               QueueHandle_t
+-#define semaphore_handle_t                           SemaphoreHandle_t
+-#define mutex_handle_t                               SemaphoreHandle_t
++#define thread_handle_t                              pthread_t
++#define queue_handle_t                               void *
++#define semaphore_handle_t                           void *
++#define mutex_handle_t                               void *
+ 
+-#define spinlock_handle_t                            portMUX_TYPE
++#define spinlock_handle_t                            spinlock_t
+ #define gpio_port_handle_t                           (void*)
+ 
+ #define FAST_RAM_ATTR                                IRAM_ATTR
+@@ -56,7 +55,7 @@ ESP_EVENT_DECLARE_BASE(WIFI_EVENT);
+ #define RPC_TASK_STACK_SIZE                          (5*1024)
+ #define RPC_TASK_PRIO                                (ESP_TASK_PRIO_MIN + 5)
+ #define DFLT_TASK_STACK_SIZE                         (5*1024)
+-#define DFLT_TASK_PRIO                               23
++#define DFLT_TASK_PRIO                               100
+ 
+ 
+ 
+@@ -101,17 +100,7 @@ enum {
+ #define MALLOC(x)                        malloc(x)
+ 
+-/* This is [malloc + aligned DMA] */
+-#define MEM_ALLOC(x)       ({                                       \
+-	esp_dma_mem_info_t dma_mem_info = {                             \
+-		.extra_heap_caps = 0,                                       \
+-		.dma_alignment_bytes = 64,                                  \
+-	};                                                              \
+-	void *tmp_buf = NULL;                                           \
+-	size_t actual_size = 0;                                         \
+-	esp_err_t err = ESP_OK;                                         \
+-	err = esp_dma_capable_malloc((x), &dma_mem_info, &tmp_buf, &actual_size);\
+-	if (err) tmp_buf = NULL;                                        \
+-	tmp_buf;})
++/* CMD53 DMA is handled by the board-level bounce buffer. */
++#define MEM_ALLOC(x) MALLOC(x)
+ 
+ #define FREE(x)                          free(x);
+ 
+@@ -134,11 +123,7 @@ enum hardware_type_e {
+ #define SEC_TO_MICROSEC(x) (1000*1000*(x))
+ 
+ 
+-#define MEM_DUMP(s) \
+-	printf("%s free:%lu min-free:%lu lfb-def:%u lfb-8bit:%u\n\n", s,	\
+-			(unsigned long int)esp_get_free_heap_size(), (unsigned long int)esp_get_minimum_free_heap_size(), \
+-			heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),		\
+-			heap_caps_get_largest_free_block(MALLOC_CAP_8BIT))
++#define MEM_DUMP(s) printf("%s\n", s)
+ 
+ #if 0
+ #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 4, 0)
+diff --git a/host/port/sdio_wrapper.c b/host/port/sdio_wrapper.c
+index c6318fb..20dcd63 100644
+--- a/host/port/sdio_wrapper.c
++++ b/host/port/sdio_wrapper.c
+@@ -1,414 +1,56 @@
+ // SPDX-License-Identifier: Apache-2.0
+-// Copyright 2015-2021 Espressif Systems (Shanghai) PTE LTD
+-//
+-// Licensed under the Apache License, Version 2.0 (the "License");
+-// you may not use this file except in compliance with the License.
+-// You may obtain a copy of the License at
+-//
+-//     http://www.apache.org/licenses/LICENSE-2.0
+-//
+-// Unless required by applicable law or agreed to in writing, software
+-// distributed under the License is distributed on an "AS IS" BASIS,
+-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-// See the License for the specific language governing permissions and
+-// limitations under the License.
++// Copyright 2015-2023 Espressif Systems (Shanghai) PTE LTD
+ 
+-#include "esp_log.h"
++#include <stdbool.h>
++#include <stdint.h>
+ 
+-#include "driver/sdmmc_defs.h"
+-#include "driver/sdmmc_host.h"
+-
+-#include "os_wrapper.h"
+-#include "sdio_reg.h"
++#include "velapoka_hosted_sdio.h"
++#include "sdio_reg.h"
+ #include "sdio_wrapper.h"
+-#include "esp_hosted_config.h"
+-
+-DEFINE_LOG_TAG(sdio_wrapper);
+-
+-#define CIS_BUFFER_SIZE 256
+-#define FUNC1_EN_MASK   (BIT(1))
+-#define SDIO_INIT_MAX_RETRY 10 // max number of times we try to init SDIO FN 1
+-
+-#define SDIO_FAIL_IF_NULL(x) do { \
+-		if (!x) return ESP_FAIL;  \
+-	} while (0);
+-
+-#define SDIO_LOCK(x) do { \
+-	if (x) g_h.funcs->_h_lock_mutex(sdio_bus_lock, portMAX_DELAY); \
+-} while (0);
+-
+-#define SDIO_UNLOCK(x) do { \
+-	if (x) g_h.funcs->_h_unlock_mutex(sdio_bus_lock); \
+-} while (0);
+-
+-static sdmmc_card_t *card = NULL;
+-static void * sdio_bus_lock;
+-
+-static esp_err_t hosted_sdio_print_cis_information(sdmmc_card_t* card)
+-{
+-	uint8_t cis_buffer[CIS_BUFFER_SIZE];
+-	size_t cis_data_len = 1024; //specify maximum searching range to avoid infinite loop
+-	esp_err_t ret = ESP_OK;
+-
+-	SDIO_FAIL_IF_NULL(card);
+-
+-	ret = sdmmc_io_get_cis_data(card, cis_buffer, CIS_BUFFER_SIZE, &cis_data_len);
+-	if (ret == ESP_ERR_INVALID_SIZE) {
+-		int temp_buf_size = cis_data_len;
+-		uint8_t* temp_buf = g_h.funcs->_h_malloc(temp_buf_size);
+-		assert(temp_buf);
+-
+-		ESP_LOGW(TAG, "CIS data longer than expected, temporary buffer allocated.");
+-		ret = sdmmc_io_get_cis_data(card, temp_buf, temp_buf_size, &cis_data_len);
+-		if (ret != ESP_OK) {
+-			ESP_LOGE(TAG, "failed to get CIS data.");
+-			HOSTED_FREE(temp_buf);
+-			return ret;
+-		}
+-
+-		sdmmc_io_print_cis_info(temp_buf, cis_data_len, NULL);
+-
+-		HOSTED_FREE(temp_buf);
+-	} else if (ret == ESP_OK) {
+-		sdmmc_io_print_cis_info(cis_buffer, cis_data_len, NULL);
+-	} else {
+-		ESP_LOGE(TAG, "failed to get CIS data.");
+-		return ret;
+-	}
+-	return ESP_OK;
+-}
+-
+-static esp_err_t hosted_sdio_set_blocksize(uint8_t fn, uint16_t value)
+-{
+-	size_t offset = SD_IO_FBR_START * fn;
+-	const uint8_t *bs_u8 = (const uint8_t *) &value;
+-	uint16_t bs_read = 0;
+-	uint8_t *bs_read_u8 = (uint8_t *) &bs_read;
+-
+-	// Set and read back block size
+-	ESP_ERROR_CHECK(sdmmc_io_write_byte(card, SDIO_FUNC_0, offset + SD_IO_CCCR_BLKSIZEL, bs_u8[0], NULL));
+-	ESP_ERROR_CHECK(sdmmc_io_write_byte(card, SDIO_FUNC_0, offset + SD_IO_CCCR_BLKSIZEH, bs_u8[1], NULL));
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, offset + SD_IO_CCCR_BLKSIZEL, &bs_read_u8[0]));
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, offset + SD_IO_CCCR_BLKSIZEH, &bs_read_u8[1]));
+-	ESP_LOGI(TAG, "Function %d Blocksize: %d", fn, (unsigned int) bs_read);
+-
+-	if (bs_read == value)
+-		return ESP_OK;
+-	else
+-		return ESP_FAIL;
+-}
+-
+-static esp_err_t hosted_sdio_card_fn_init(sdmmc_card_t *card)
+-{
+-	uint8_t ioe = 0;
+-	uint8_t ior = 0;
+-	uint8_t ie = 0;
+-	uint8_t bus_width = 0;
+-	uint16_t bs = 0;
+-	int i = 0;
+-
+-	SDIO_FAIL_IF_NULL(card);
+-
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, SD_IO_CCCR_FN_ENABLE, &ioe));
+-	ESP_LOGD(TAG, "IOE: 0x%02x", ioe);
+-
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, SD_IO_CCCR_FN_READY, &ior));
+-	ESP_LOGD(TAG, "IOR: 0x%02x", ior);
+-
+-	// enable function 1
+-	ioe |= FUNC1_EN_MASK;
+-	ESP_ERROR_CHECK(sdmmc_io_write_byte(card, SDIO_FUNC_0, SD_IO_CCCR_FN_ENABLE, ioe, &ioe));
+-	ESP_LOGD(TAG, "IOE: 0x%02x", ioe);
+-
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, SD_IO_CCCR_FN_ENABLE, &ioe));
+-	ESP_LOGD(TAG, "IOE: 0x%02x", ioe);
+-
+-	// wait for the card to become ready
+-	ior = 0;
+-	for (i = 0; i < SDIO_INIT_MAX_RETRY; i++) {
+-		ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, SD_IO_CCCR_FN_READY, &ior));
+-		ESP_LOGD(TAG, "IOR: 0x%02x", ior);
+-		if (ior & FUNC1_EN_MASK) {
+-			break;
+-		} else {
+-			usleep(10 * 1000);
+-		}
+-	}
+-	if (i >= SDIO_INIT_MAX_RETRY) {
+-		// card failed to become ready
+-		return ESP_FAIL;
+-	}
+-
+-	// get interrupt status
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, SD_IO_CCCR_INT_ENABLE, &ie));
+-	ESP_LOGD(TAG, "IE: 0x%02x", ie);
+-
+-	// enable interrupts for function 1 and master enable
+-	ie |= BIT(0) | FUNC1_EN_MASK;
+-	ESP_ERROR_CHECK(sdmmc_io_write_byte(card, SDIO_FUNC_0, SD_IO_CCCR_INT_ENABLE, ie, NULL));
+-
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, SD_IO_CCCR_INT_ENABLE, &ie));
+-	ESP_LOGD(TAG, "IE: 0x%02x", ie);
+-
+-	// get bus width register
+-	ESP_ERROR_CHECK(sdmmc_io_read_byte(card, SDIO_FUNC_0, SD_IO_CCCR_BUS_WIDTH, &bus_width));
+-	ESP_LOGD(TAG, "BUS_WIDTH: 0x%02x", bus_width);
+-
+-	// skip enable of continous SPI interrupts
+-
+-	// set FN0 block size to 512
+-	bs = 512;
+-	ESP_ERROR_CHECK(hosted_sdio_set_blocksize(SDIO_FUNC_0, bs));
+-
+-	// set FN1 block size to 512
+-	bs = 512;
+-	ESP_ERROR_CHECK(hosted_sdio_set_blocksize(SDIO_FUNC_1, bs));
+-
+-	return ESP_OK;
+-}
+-
+-static esp_err_t sdio_read_fromio(sdmmc_card_t *card, uint32_t function, uint32_t addr,
+-							uint8_t *data, uint16_t size)
+-{
+-	uint16_t remainder = size;
+-	uint16_t blocks;
+-	esp_err_t res;
+-	uint8_t *ptr = data;
+-
+-	// do block mode transfer
+-	while (remainder >= ESP_BLOCK_SIZE) {
+-		blocks = H_SDIO_RX_BLOCKS_TO_TRANSFER(remainder);
+-		size = blocks * ESP_BLOCK_SIZE;
+-		res = sdmmc_io_read_blocks(card, function, addr, ptr, size);
+-		if (res)
+-			return res;
+ 
+-		remainder -= size;
+-		ptr += size;
+-		addr += size;
+-	}
+-
+-	// transfer remainder using byte mode
+-	while (remainder > 0) {
+-		size = remainder;
+-		res = sdmmc_io_read_bytes(card, function, addr, ptr, size);
+-		if (res)
+-			return res;
+-
+-		remainder -= size;
+-		ptr += size;
+-		addr += size;
+-	}
+-
+-	return ESP_OK;
+-}
+-
+-static esp_err_t sdio_write_toio(sdmmc_card_t *card, uint32_t function, uint32_t addr,
+-									uint8_t *data, uint16_t size)
+-{
+-	uint16_t remainder = size;
+-	uint16_t blocks;
+-	esp_err_t res;
+-	uint8_t *ptr = data;
+-
+-	// do block mode transfer
+-	while (remainder >= ESP_BLOCK_SIZE) {
+-		blocks = H_SDIO_TX_BLOCKS_TO_TRANSFER(remainder);
+-		size = blocks * ESP_BLOCK_SIZE;
+-		res = sdmmc_io_write_blocks(card, function, addr, ptr, size);
+-		if (res)
+-			return res;
+-
+-		remainder -= size;
+-		ptr += size;
+-		addr += size;
+-	}
+-
+-	// transfer remainder using byte mode
+-	while (remainder > 0) {
+-		size = remainder;
+-		res = sdmmc_io_write_bytes(card, function, addr, ptr, size);
+-		if (res)
+-			return res;
+-
+-		remainder -= size;
+-		ptr += size;
+-		addr += size;
+-	}
+-
+-	return ESP_OK;
+-}
+-
+-void * hosted_sdio_init(void)
++void *hosted_sdio_init(void)
+ {
+-	esp_err_t res;
+-
+-	sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+-
+-	// initialise SDMMC host
+-	res = sdmmc_host_init();
+-	if (res != ESP_OK)
+-		return NULL;
+-
+-	// configure SDIO interface and slot
+-	slot_config.width = H_SDIO_BUS_WIDTH;
+-#if defined(H_SDIO_SOC_USE_GPIO_MATRIX)
+-	slot_config.clk = H_SDIO_PIN_CLK;
+-	slot_config.cmd = H_SDIO_PIN_CMD;
+-	slot_config.d0  = H_SDIO_PIN_D0;
+-	slot_config.d1  = H_SDIO_PIN_D1;
+-#if (H_SDIO_BUS_WIDTH == 4)
+-	slot_config.d2  = H_SDIO_PIN_D2;
+-	slot_config.d3  = H_SDIO_PIN_D3;
+-#endif
+-#endif
+-	res = sdmmc_host_init_slot(H_SDMMC_HOST_SLOT, &slot_config);
+-	if (res != ESP_OK) {
+-		ESP_LOGE(TAG, "init SDMMC Host slot %d failed", H_SDMMC_HOST_SLOT);
+-		return NULL;
+-	}
+-	// initialise connected SDIO card/slave
+-	card = (sdmmc_card_t *)g_h.funcs->_h_malloc(sizeof(sdmmc_card_t));
+-	if (!card)
+-		return NULL;
+-
+-	// initialise mutex for bus locking
+-	sdio_bus_lock = g_h.funcs->_h_create_mutex();
+-	assert(sdio_bus_lock);
+-
+-	return (void *)card;
++  return velapoka_hosted_sdio_initialize();
+ }
+ 
+ int hosted_sdio_card_init(void *ctx)
+ {
+-	sdmmc_host_t config = SDMMC_HOST_DEFAULT();
+-
+-	if (H_SDIO_BUS_WIDTH == 4)
+-		config.flags = SDMMC_HOST_FLAG_4BIT;
+-	else
+-		config.flags = SDMMC_HOST_FLAG_1BIT;
+-	config.max_freq_khz = H_SDIO_CLOCK_FREQ;
+-
+-#ifdef CONFIG_IDF_TARGET_ESP32P4
+-	// Set this flag to allocate aligned buffer of 512 bytes to meet
+-	// DMA's requirements for CMD53 byte mode. Mandatory when any
+-	// buffer is behind the cache, or not aligned to 4 byte boundary.
+-	config.flags |= SDMMC_HOST_FLAG_ALLOC_ALIGNED_BUF;
+-#endif
+-
+-	if (sdmmc_card_init(&config, card) != ESP_OK) {
+-		ESP_LOGE(TAG, "sdmmc_card_init failed");
+-		goto fail;
+-	}
+-
+-	// output CIS info from the slave
+-	sdmmc_card_print_info(stdout, card);
+-
+-	if (hosted_sdio_print_cis_information(card) != ESP_OK) {
+-		ESP_LOGW(TAG, "failed to print card info");
+-	}
+-
+-	// initialise the card functions
+-	if (hosted_sdio_card_fn_init(card) != ESP_OK) {
+-		ESP_LOGE(TAG, "sdio_cared_fn_init failed");
+-		goto fail;
+-	}
+-	return ESP_OK;
+-
+-fail:
+-	sdmmc_host_deinit();
+-	if (card) {
+-		HOSTED_FREE(card);
+-	}
+-	return ESP_FAIL;
+-}
+-
+-esp_err_t hosted_sdio_deinit(void *ctx)
+-{
+-	sdmmc_card_t *card = (sdmmc_card_t*) ctx;
+-
+-	if (card) {
+-		sdmmc_host_deinit();
+-		HOSTED_FREE(card);
+-		return ESP_OK;
+-	}
+-	return ESP_FAIL;
++  return velapoka_hosted_sdio_card_initialize(ctx);
+ }
+ 
+-int hosted_sdio_read_reg(uint32_t reg, uint8_t *data, uint16_t size, bool lock_required)
++int hosted_sdio_read_reg(uint32_t reg, uint8_t *data, uint16_t size,
++                         bool lock_required)
+ {
+-	int res = 0;
+-
+-	SDIO_FAIL_IF_NULL(card);
+-
+-	/* Need to apply address mask when reading/writing slave registers */
+-	reg &= ESP_ADDRESS_MASK;
+-
+-	SDIO_LOCK(lock_required);
+-	if (size <= 1) {
+-		res = sdmmc_io_read_byte(card, SDIO_FUNC_1, reg, data);
+-	} else {
+-		res = sdmmc_io_read_bytes(card, SDIO_FUNC_1, reg, data, size);
+-	}
+-	SDIO_UNLOCK(lock_required);
+-	return res;
++  (void)lock_required;
++  reg &= ESP_ADDRESS_MASK;
++  return velapoka_hosted_sdio_read(reg, data, size, true);
+ }
+ 
+-int hosted_sdio_write_reg(uint32_t reg, uint8_t *data, uint16_t size, bool lock_required)
++int hosted_sdio_write_reg(uint32_t reg, uint8_t *data, uint16_t size,
++                          bool lock_required)
+ {
+-	int res = 0;
+-
+-	SDIO_FAIL_IF_NULL(card);
+-
+-	/* Need to apply address mask when reading/writing slave registers */
+-	reg &= ESP_ADDRESS_MASK;
+-
+-	SDIO_LOCK(lock_required);
+-	if (size <= 1) {
+-		res = sdmmc_io_write_byte(card, SDIO_FUNC_1, reg, *data, NULL);
+-	} else {
+-		res = sdmmc_io_write_bytes(card, SDIO_FUNC_1, reg, data, size);
+-	}
+-	SDIO_UNLOCK(lock_required);
+-	return res;
++  (void)lock_required;
++  reg &= ESP_ADDRESS_MASK;
++  return velapoka_hosted_sdio_write(reg, data, size, true);
+ }
+ 
+-int hosted_sdio_read_block(uint32_t reg, uint8_t *data, uint16_t size, bool lock_required)
++int hosted_sdio_read_block(uint32_t reg, uint8_t *data, uint16_t size,
++                           bool lock_required)
+ {
+-	int res = 0;
+-
+-	SDIO_FAIL_IF_NULL(card);
+-
+-	SDIO_LOCK(lock_required);
+-	if (size <= 1) {
+-		res = sdmmc_io_read_byte(card, SDIO_FUNC_1, reg, data);
+-	} else {
+-		res = sdio_read_fromio(card, SDIO_FUNC_1, reg, data, H_SDIO_RX_LEN_TO_TRANSFER(size));
+-	}
+-	SDIO_UNLOCK(lock_required);
+-	return res;
++  (void)lock_required;
++  size = (size + 3) & ~3;
++  return velapoka_hosted_sdio_read(reg, data, size, true);
+ }
+ 
+-int hosted_sdio_write_block(uint32_t reg, uint8_t *data, uint16_t size, bool lock_required)
++int hosted_sdio_write_block(uint32_t reg, uint8_t *data, uint16_t size,
++                            bool lock_required)
+ {
+-	int res = 0;
+-
+-	SDIO_FAIL_IF_NULL(card);
+-
+-	SDIO_LOCK(lock_required);
+-	if (size <= 1) {
+-		res = sdmmc_io_write_byte(card, SDIO_FUNC_1, reg, *data, NULL);
+-	} else {
+-		res = sdio_write_toio(card, SDIO_FUNC_1, reg, data, H_SDIO_TX_LEN_TO_TRANSFER(size));
+-	}
+-	SDIO_UNLOCK(lock_required);
+-	return res;
++  (void)lock_required;
++  size = (size + 3) & ~3;
++  return velapoka_hosted_sdio_write(reg, data, size, true);
+ }
+ 
+-/* Blocking fn call. Returns when SDIO slave device generates a SDIO interupt */
+ int hosted_sdio_wait_slave_intr(uint32_t ticks_to_wait)
+ {
+-	SDIO_FAIL_IF_NULL(card);
+-
+-	return sdmmc_io_wait_int(card, ticks_to_wait);
++  return velapoka_hosted_sdio_wait_interrupt(ticks_to_wait);
+ }
+diff --git a/host/port/sdio_wrapper.h b/host/port/sdio_wrapper.h
+index 7432146..d7c94c3 100644
+--- a/host/port/sdio_wrapper.h
++++ b/host/port/sdio_wrapper.h
+@@ -19,7 +19,6 @@
+ #define __SDIO_WRAPPER_H_
+ 
+ #include "esp_check.h"
+-#include "sdmmc_cmd.h"
+ 
+ #define MAX_TRANSPORT_BUFFER_SIZE        MAX_SDIO_BUFFER_SIZE
+ 
+diff --git a/host/drivers/transport/sdio/sdio_drv.c b/host/drivers/transport/sdio/sdio_drv.c
+--- a/host/drivers/transport/sdio/sdio_drv.c
++++ b/host/drivers/transport/sdio/sdio_drv.c
+@@ -635,7 +635,11 @@ static void sdio_read_task(void *pvParameters)
+ 	ESP_LOGI(TAG, "generate slave intr");
+ 
+ 	// inform the slave device that we are ready
+-	sdio_generate_slave_intr(ESP_OPEN_DATA_PATH);
++	res = sdio_generate_slave_intr(ESP_OPEN_DATA_PATH);
++	if (res != ESP_OK) {
++		ESP_LOGE(TAG, "failed to generate slave interrupt: %d", res);
++		return;
++	}
+ 
+ 	for (;;) {
+ 

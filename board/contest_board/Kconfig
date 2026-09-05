@@ -76,6 +76,29 @@ config VELAPOKA_SDCARD
 		The wiring follows Espressif's official BSP: CLK=GPIO43,
 		MOSI/CMD=GPIO44, MISO/D0=GPIO39 and CS/D3=GPIO42.
 
+config VELAPOKA_WIFI
+	bool "Enable ESP32-C6 ESP-Hosted Wi-Fi"
+	default n
+	depends on VELAPOKA_BSP
+	select NET
+	select DRIVERS_WIRELESS
+	select DRIVERS_IEEE80211
+	select NETDEV_WIRELESS_IOCTL
+	select SCHED_LPWORK
+	---help---
+		Register the on-board ESP32-C6 as wlan0 using ESP-Hosted 0.0.6
+		over the ESP32-P4 SDIO host.  This option provides only the NuttX
+		network driver and wireless ioctls; it does not add a Wi-Fi app.
+
+if VELAPOKA_WIFI
+
+config VELAPOKA_WIFI_SDIO_FREQUENCY
+	int "ESP-Hosted SDIO clock frequency"
+	range 1000000 40000000
+	default 20000000
+
+endif # VELAPOKA_WIFI
+
 if VELAPOKA_TOUCHSCREEN
 
 config VELAPOKA_TOUCHSCREEN_PATH

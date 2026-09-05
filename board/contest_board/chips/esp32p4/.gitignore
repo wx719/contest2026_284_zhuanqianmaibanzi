@@ -1,4 +1,5 @@
-/esp-hal-3rdparty/
+/esp-hal-3rdparty
+/esp-hosted
 /*.o
 /*.d
 /.depend

@@ -178,6 +178,32 @@ INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY
 INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_rmt$(DELIM)src
 INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_uart$(DELIM)include
 
+ifeq ($(CONFIG_VELAPOKA_WIFI),y)
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)board$(DELIM)board
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_hal_sd$(DELIM)include
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_hal_sd$(DELIM)$(CHIP_SERIES)$(DELIM)include
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_sd_intf$(DELIM)include
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_sdmmc$(DELIM)include
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_sdmmc$(DELIM)src
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_wifi$(DELIM)include
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_wifi$(DELIM)include$(DELIM)local
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)port
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)transport
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)transport$(DELIM)sdio
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)serial
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)mempool
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)virtual_serial_if
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)core
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)slaveif
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)wrap
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)bt
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)utils
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)common$(DELIM)include
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)common$(DELIM)proto
+INCLUDES += $(INCDIR_PREFIX)$(ARCH_SRCDIR)$(DELIM)chip$(DELIM)esp-hosted$(DELIM)common$(DELIM)protobuf-c
+endif
+
 # Linker scripts
 
 ifneq ($(CONFIG_ESP32P4_SELECTS_REV_LESS_V3),y)
@@ -355,8 +381,11 @@ ifeq ($(CONFIG_ESPRESSIF_MIPI_DSI),y)
   CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_hal_dma$(DELIM)dw_gdma_hal.c
 endif
 
-ifeq ($(CONFIG_VELAPOKA_CAMERA),y)
+ifneq ($(filter y,$(CONFIG_VELAPOKA_CAMERA) $(CONFIG_VELAPOKA_WIFI)),)
   CHIP_CSRCS += chip$(DELIM)espressif$(DELIM)esp_cam_intr_compat.c
+endif
+
+ifeq ($(CONFIG_VELAPOKA_CAMERA),y)
   CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)hal$(DELIM)color_hal.c
   CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_hal_cam$(DELIM)mipi_csi_hal.c
   CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_hal_cam$(DELIM)$(CHIP_SERIES)$(DELIM)mipi_csi_periph.c
@@ -456,7 +485,59 @@ CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)nuttx$(DELIM)src$(DELI
 CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)nuttx$(DELIM)src$(DELIM)heap_caps.c
 CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)nuttx$(DELIM)src$(DELIM)platform$(DELIM)os.c
 
-ifneq ($(CONFIG_ESPRESSIF_WIFI)$(CONFIG_ESPRESSIF_EMAC),)
+ifeq ($(CONFIG_VELAPOKA_WIFI),y)
+CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_hal_sd$(DELIM)sdmmc_hal.c
+CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)esp_hal_sd$(DELIM)$(CHIP_SERIES)$(DELIM)sdmmc_periph.c
+CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_sd_intf$(DELIM)sd_host.c
+CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_sdmmc$(DELIM)src$(DELIM)sd_host_sdmmc.c
+CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)components$(DELIM)upper_hal_sdmmc$(DELIM)src$(DELIM)sd_trans_sdmmc.c
+
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)transport$(DELIM)transport_drv.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)transport$(DELIM)sdio$(DELIM)sdio_drv.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)serial$(DELIM)serial_ll_if.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)serial$(DELIM)serial_drv.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)virtual_serial_if$(DELIM)serial_if.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)mempool$(DELIM)mempool.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)core$(DELIM)rpc_core.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)core$(DELIM)rpc_req.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)core$(DELIM)rpc_rsp.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)core$(DELIM)rpc_evt.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)slaveif$(DELIM)rpc_slave_if.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)rpc$(DELIM)wrap$(DELIM)rpc_wrap.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)drivers$(DELIM)bt$(DELIM)hci_stub_drv.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)utils$(DELIM)common.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)utils$(DELIM)util.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)utils$(DELIM)stats.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)port$(DELIM)os_wrapper.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)host$(DELIM)port$(DELIM)sdio_wrapper.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)common$(DELIM)protobuf-c$(DELIM)protobuf-c$(DELIM)protobuf-c.c
+CHIP_CSRCS += chip$(DELIM)esp-hosted$(DELIM)common$(DELIM)proto$(DELIM)esp_hosted_rpc.pb-c.c
+
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_HOST_INTERFACE=1
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_CLOCK_FREQ=$(CONFIG_VELAPOKA_WIFI_SDIO_FREQUENCY)
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_BUS_WIDTH=4
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_PIN_CLK=18
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_PIN_CMD=19
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_PIN_D0=14
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_PIN_D1=15
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_PIN_D2=16
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_PIN_D3=17
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_GPIO_SLAVE_RESET_SLAVE=54
+
+# GPIO54 drives C6_CHIP_PU (EN): low resets the C6 and high runs it.  Keep
+# ESP-Hosted's default high-low-high pulse so the pin finishes high.
+
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_TX_Q_SIZE=16
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_RX_Q_SIZE=16
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_OPTIMIZATION_RX_STREAMING_MODE=0
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_SDIO_OPTIMIZATION_RX_MAX_SIZE=0
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_RAW_THROUGHPUT_TRANSPORT=0
+CFLAGS += $(DEFINE_PREFIX)CONFIG_SLAVE_CHIPSET_ESP32C6=1
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_MAX_SIMULTANEOUS_SYNC_RPC_REQUESTS=5
+CFLAGS += $(DEFINE_PREFIX)CONFIG_ESP_MAX_SIMULTANEOUS_ASYNC_RPC_REQUESTS=5
+endif
+
+ifneq ($(CONFIG_ESPRESSIF_WIFI)$(CONFIG_ESPRESSIF_EMAC)$(CONFIG_VELAPOKA_WIFI),)
   CHIP_CSRCS += chip$(DELIM)$(ESP_HAL_3RDPARTY_REPO)$(DELIM)nuttx$(DELIM)src$(DELIM)esp_event.c
 endif
 

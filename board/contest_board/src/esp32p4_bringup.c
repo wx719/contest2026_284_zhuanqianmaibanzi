@@ -47,6 +47,11 @@
 int board_mmcsd_initialize(void);
 #endif
 
+#ifdef CONFIG_VELAPOKA_WIFI
+#  include <arch/board/velapoka_bsp.h>
+#  include "velapoka_esp_hosted.h"
+#endif
+
 #ifdef CONFIG_WATCHDOG
 #  include "espressif/esp_wdt.h"
 #endif
@@ -334,6 +339,19 @@ int esp_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: Ethernet initialization failed: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_VELAPOKA_WIFI
+  ret = velapoka_wifi_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: ESP-Hosted Wi-Fi initialization failed: %d\n",
+             ret);
+    }
+  else
+    {
+      velapoka_bsp_mark_ready(VELAPOKA_CAP_WIFI);
     }
 #endif
 

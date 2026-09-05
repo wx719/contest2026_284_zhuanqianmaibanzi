@@ -19,7 +19,10 @@ vendor/openvela/boards/contest2026_284_board
 - `src/velapoka_gt911.c`：GT911 触控探测与轮询 lower-half。
 - `src/velapoka_display.c`：EK79007 MIPI-DSI framebuffer 与 VSync 切换。
 - `src/velapoka_sc2336.c`：SC2336 传感器、CSI bridge 和 V4L2 注册。
+- `src/velapoka_hosted_sdio.c`：ESP32-P4 SDMMC host 与板载 ESP32-C6 SDIO 链路。
+- `src/velapoka_esp_hosted.c`：ESP-Hosted RPC、数据通道和 NuttX `wlan0` netdev。
 - `docs/display-touch-bringup.md`：显示与触摸链路、调试和实板验收流程。
+- `docs/wifi-esp-hosted-bringup.md`：Wi-Fi 驱动架构、配置和实板验收流程。
 - `scripts/Make.defs`：链接规则、simple boot 镜像生成和 `vela_nuttx.bin` 产物命名。
 - `upstream/nuttx/`：需要单独提交到公共 NuttX 仓的基线修复。
 
@@ -29,4 +32,6 @@ vendor/openvela/boards/contest2026_284_board
 和 EMAC 链路已完成相应实板 smoke test。显示注册为 `/dev/fb0`，相机注册为
 `/dev/video0`，两次 `camtest preview 3 5000` 均获得完整 1152000 字节帧；
 EMAC 注册为 `eth0`，静态 IPv4 双向 Ping 已通过。SDMMC 适配已存在，但仍需
-完成 `/dev/mmcsd0`、FAT 挂载和 CRC 读回验收。
+完成 `/dev/mmcsd0`、FAT 挂载和 CRC 读回验收。板载 ESP32-C6 已通过 SDIO 和
+ESP-Hosted 接入 `wlan0`；实板已完成 transport/RPC、STA 启动、MAC 获取、
+netdev 注册和 BSP ready 位验收。本阶段未加入 Wi-Fi 联网应用。
