@@ -66,7 +66,11 @@ velapoka_camera.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqian
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/lib/lib.h \
  /home/benson/openvela-work/contest284/nuttx/include/sys/ioctl.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/net/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wireless/wireless.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/socket.h \
+ /home/benson/openvela-work/contest284/nuttx/include/net/if.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/input/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wireless/ioctl.h \
  /home/benson/openvela-work/contest284/nuttx/include/sys/videoio.h \
  /home/benson/openvela-work/contest284/nuttx/include/sys/video_controls.h \
  velapoka_camera.h
@@ -766,7 +770,11 @@ velapoka_main.c.home.benson.openvela-work.contest284.contest2026_284_zhuanqianma
  /home/benson/openvela-work/contest284/nuttx/include/stdlib.h \
  /home/benson/openvela-work/contest284/nuttx/include/sys/ioctl.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/net/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wireless/wireless.h \
+ /home/benson/openvela-work/contest284/nuttx/include/sys/socket.h \
+ /home/benson/openvela-work/contest284/nuttx/include/net/if.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/input/ioctl.h \
+ /home/benson/openvela-work/contest284/nuttx/include/nuttx/wireless/ioctl.h \
  /home/benson/openvela-work/contest284/nuttx/include/unistd.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/tls.h \
  /home/benson/openvela-work/contest284/nuttx/include/nuttx/sched.h \

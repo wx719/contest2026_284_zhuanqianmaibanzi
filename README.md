@@ -50,6 +50,7 @@ Windows 读取验收；开机自启动、独立 Exit、队列排空、FAT 卸载
 - `board/contest_board/docs/display-touch-bringup.md`：显示/触摸 bring-up 开发文档。
 - `board/contest_board/docs/m2-camera-preview-archive.md`：M2 实时预览实板验收归档。
 - `board/contest_board/docs/m4-storage-archive.md`：M4 MicroSD 留档、恢复和安全退出归档。
+- `board/contest_board/docs/pre-network-export-baseline-archive.md`：RJ45 数据导出开发前的离线产品基线、未完成项和后续边界。
 - `board/contest_board/docs/velapoka-capture-storage-chain.md`：采集、检测与 SD 写入全链路。
 - `board/contest_board/docs/wifi-esp-hosted-bringup.md`：ESP32-C6 SDIO/ESP-Hosted 驱动边界与验收步骤。
 - `board/contest_board/include/board.h`：VelaPoka 板级资源表。
