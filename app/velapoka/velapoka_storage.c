@@ -47,6 +47,7 @@
 #define VELAPOKA_STORAGE_JSON_SIZE     1024
 #define VELAPOKA_BMP_HEADER_SIZE       1078
 #define VELAPOKA_STORAGE_QUEUE_DEPTH   4
+#define VELAPOKA_STORAGE_EXPORT_MAX    (4 * 1024 * 1024)
 
 #if !defined(CONFIG_FAT_LFN) || CONFIG_FAT_MAXFNAME < 17
 #  error "VelaPoka storage requires FAT long filenames of at least 17 bytes"
@@ -68,6 +69,7 @@ struct velapoka_storage_request_s
 struct velapoka_storage_s
 {
   pthread_mutex_t lock;
+  pthread_mutex_t io_lock;
   pthread_cond_t cond;
   pthread_t thread;
   FAR uint8_t *reference;
@@ -147,6 +149,34 @@ static int velapoka_path(FAR char *path, size_t size,
                     CONFIG_EXAMPLES_VELAPOKA_STORAGE_MOUNTPOINT,
                     VELAPOKA_STORAGE_ROOT, name);
   return length > 0 && (size_t)length < size ? OK : -ENAMETOOLONG;
+}
+
+static bool velapoka_export_path_valid(FAR const char *relative_path)
+{
+  FAR const char *name;
+  unsigned int i;
+
+  if (strcmp(relative_path, VELAPOKA_STORAGE_RESULTS) == 0)
+    {
+      return true;
+    }
+
+  name = relative_path;
+  if (strncmp(name, VELAPOKA_STORAGE_FAIL_DIR "/fail_", 10) != 0)
+    {
+      return false;
+    }
+
+  name += 10;
+  for (i = 0; i < 8; i++)
+    {
+      if (name[i] < '0' || name[i] > '9')
+        {
+          return false;
+        }
+    }
+
+  return strcmp(name + 8, ".bmp") == 0;
 }
 
 static int velapoka_write_all(int fd, FAR const uint8_t *buffer,
@@ -830,6 +860,7 @@ static FAR void *velapoka_storage_thread(FAR void *arg)
 
       pthread_mutex_unlock(&storage->lock);
 
+      pthread_mutex_lock(&storage->io_lock);
       if (save_reference)
         {
           ret = velapoka_storage_write_reference(storage->reference,
@@ -845,6 +876,8 @@ static FAR void *velapoka_storage_thread(FAR void *arg)
         {
           ret = OK;
         }
+
+      pthread_mutex_unlock(&storage->io_lock);
 
       if (ret < 0)
         {
@@ -896,6 +929,7 @@ static int velapoka_storage_cleanup(
     }
 
   pthread_cond_destroy(&storage->cond);
+  pthread_mutex_destroy(&storage->io_lock);
   pthread_mutex_destroy(&storage->lock);
   free(storage);
   return ret;
@@ -932,9 +966,18 @@ int velapoka_storage_start(FAR struct velapoka_storage_s **storage_out)
       return -ret;
     }
 
+  ret = pthread_mutex_init(&storage->io_lock, NULL);
+  if (ret != 0)
+    {
+      pthread_mutex_destroy(&storage->lock);
+      free(storage);
+      return -ret;
+    }
+
   ret = pthread_cond_init(&storage->cond, NULL);
   if (ret != 0)
     {
+      pthread_mutex_destroy(&storage->io_lock);
       pthread_mutex_destroy(&storage->lock);
       free(storage);
       return -ret;
@@ -1211,6 +1254,78 @@ int velapoka_storage_save_result(
   pthread_mutex_unlock(&storage->lock);
   *record_id = id;
   return OK;
+}
+
+int velapoka_storage_read_export(
+  FAR struct velapoka_storage_s *storage, FAR const char *relative_path,
+  FAR uint8_t **data, FAR size_t *size)
+{
+  struct stat file_status;
+  FAR uint8_t *snapshot;
+  char path[VELAPOKA_STORAGE_PATH_SIZE];
+  int fd;
+  int ret;
+
+  if (storage == NULL || relative_path == NULL || data == NULL ||
+      size == NULL || !velapoka_export_path_valid(relative_path))
+    {
+      return -EINVAL;
+    }
+
+  *data = NULL;
+  *size = 0;
+  ret = velapoka_path(path, sizeof(path), relative_path);
+  if (ret < 0)
+    {
+      return ret;
+    }
+
+  pthread_mutex_lock(&storage->io_lock);
+  fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0)
+    {
+      ret = -errno;
+      goto out_unlock;
+    }
+
+  if (fstat(fd, &file_status) < 0)
+    {
+      ret = -errno;
+      close(fd);
+      goto out_unlock;
+    }
+
+  if (file_status.st_size < 0 ||
+      file_status.st_size > VELAPOKA_STORAGE_EXPORT_MAX)
+    {
+      ret = -EFBIG;
+      close(fd);
+      goto out_unlock;
+    }
+
+  snapshot = malloc(file_status.st_size > 0 ? file_status.st_size : 1);
+  if (snapshot == NULL)
+    {
+      ret = -ENOMEM;
+      close(fd);
+      goto out_unlock;
+    }
+
+  ret = file_status.st_size > 0 ?
+        velapoka_read_all(fd, snapshot, file_status.st_size) : OK;
+  close(fd);
+  if (ret < 0)
+    {
+      free(snapshot);
+      goto out_unlock;
+    }
+
+  *data = snapshot;
+  *size = file_status.st_size;
+
+out_unlock:
+  pthread_mutex_unlock(&storage->io_lock);
+  return ret;
 }
 
 unsigned int velapoka_storage_get_history(

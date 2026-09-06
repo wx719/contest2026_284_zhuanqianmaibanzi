@@ -1,5 +1,5 @@
 /****************************************************************************
- * apps/examples/velapoka/velapoka_storage.h
+ * apps/app/velapoka/velapoka_storage.h
  *
  * SPDX-License-Identifier: Apache-2.0
  ****************************************************************************/
@@ -55,6 +55,9 @@ int velapoka_storage_save_result(
   FAR const struct velapoka_result_s *result,
   FAR const uint8_t *gray, size_t size, unsigned int threshold_percent,
   FAR uint32_t *record_id);
+int velapoka_storage_read_export(
+  FAR struct velapoka_storage_s *storage, FAR const char *relative_path,
+  FAR uint8_t **data, FAR size_t *size);
 unsigned int velapoka_storage_get_history(
   FAR struct velapoka_storage_s *storage,
   FAR struct velapoka_history_s *history, unsigned int capacity);

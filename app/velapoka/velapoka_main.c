@@ -27,6 +27,7 @@
 
 #include "velapoka_camera.h"
 #include "velapoka_inspect.h"
+#include "velapoka_network.h"
 #include "velapoka_state.h"
 #include "velapoka_storage.h"
 #include "velapoka_ui.h"
@@ -70,6 +71,7 @@ int main(int argc, FAR char *argv[])
   lv_nuttx_result_t result;
   FAR struct velapoka_camera_s *camera = NULL;
   FAR struct velapoka_inspector_s *inspector = NULL;
+  FAR struct velapoka_network_s *network = NULL;
   FAR struct velapoka_storage_s *storage = NULL;
   FAR uint8_t *storage_image = NULL;
   struct velapoka_history_s history[VELAPOKA_HISTORY_COUNT];
@@ -206,6 +208,13 @@ int main(int argc, FAR char *argv[])
   if (reference_restored)
     {
       velapoka_ui_set_threshold(restored_threshold);
+    }
+
+  ret = velapoka_network_start(&network, storage);
+  if (ret < 0)
+    {
+      fprintf(stderr, "velapoka: warning: network unavailable: %d\n",
+              ret);
     }
 
   history_count = velapoka_storage_get_history(
@@ -507,6 +516,11 @@ int main(int argc, FAR char *argv[])
             }
         }
 
+      velapoka_network_update(
+        network, state.current, camera != NULL, storage_online,
+        inspector != NULL && velapoka_inspect_reference_ready(inspector),
+        velapoka_ui_get_threshold());
+
       if (sync_fd >= 0)
         {
           do
@@ -544,6 +558,12 @@ int main(int argc, FAR char *argv[])
     }
 
   printf("velapoka: shutdown requested\n");
+  ret = velapoka_network_stop(network);
+  if (ret < 0)
+    {
+      fprintf(stderr, "velapoka: network shutdown error: %d\n", ret);
+    }
+
   velapoka_camera_stop(camera);
   velapoka_inspect_stop(inspector);
   storage_ret = velapoka_storage_stop(storage);

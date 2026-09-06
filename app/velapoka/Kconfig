@@ -11,10 +11,15 @@ menuconfig EXAMPLES_VELAPOKA
 	depends on LV_USE_IMAGE
 	depends on LV_USE_NUTTX
 	depends on LV_USE_NUTTX_TOUCHSCREEN
+	depends on NET && NET_TCP
+	select NET_SOCKOPTS
+	select NET_TCPBACKLOG
+	select NETUTILS_NETLIB
 	---help---
 		Build the VelaPoka LVGL product application.  It captures packed
 		RAW10 frames from the V4L2 camera, converts them to a grayscale live
-		preview and renders the split-screen touch UI.
+		preview, renders the split-screen touch UI and provides read-only
+		Ethernet HTTP export.
 
 if EXAMPLES_VELAPOKA
 
@@ -69,5 +74,39 @@ config EXAMPLES_VELAPOKA_STORAGE_PRIORITY
 config EXAMPLES_VELAPOKA_STORAGE_STACKSIZE
 	int "Storage worker stack size"
 	default 4096
+
+config EXAMPLES_VELAPOKA_NETWORK_PORT
+	int "HTTP export port"
+	range 1 65535
+	default 8080
+	depends on NET && NET_TCP
+
+config EXAMPLES_VELAPOKA_NETWORK_PRIORITY
+	int "HTTP export worker priority"
+	default 85
+	depends on NET && NET_TCP
+
+config EXAMPLES_VELAPOKA_NETWORK_STACKSIZE
+	int "HTTP export worker stack size"
+	default 6144
+	depends on NET && NET_TCP
+
+config EXAMPLES_VELAPOKA_NETWORK_IPADDR
+	hex "Ethernet static IPv4 address"
+	default 0x0a000002
+	depends on NET && NET_TCP
+	---help---
+		Static IPv4 address for eth0 in host byte order.  The default is
+		10.0.0.2.
+
+config EXAMPLES_VELAPOKA_NETWORK_NETMASK
+	hex "Ethernet IPv4 netmask"
+	default 0xffffff00
+	depends on NET && NET_TCP
+
+config EXAMPLES_VELAPOKA_NETWORK_ROUTER
+	hex "Ethernet IPv4 router"
+	default 0x0a000001
+	depends on NET && NET_TCP
 
 endif # EXAMPLES_VELAPOKA
