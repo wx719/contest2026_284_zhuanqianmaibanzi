@@ -8,8 +8,9 @@
 - [x] manifest 将该目录映射到 `vendor/openvela/boards/contest2026_284_board`。
 - [x] HAL 仓、目标文件和静态库均被忽略，不作为定制源码提交。
 - [x] 构建规则不会静默修改 NuttX 核心代码。
-- [ ] `upstream/nuttx/` 中的三个公共修复需按依赖关系分别提交至 openvela/nuttx
-  的 `dev-ai-contest-2026` 分支；在其合入前，本地复现需显式应用补丁。
+- [x] `upstream/nuttx/` 中的三个公共修复已分别提交至 openvela/nuttx 的
+  `dev-ai-contest-2026` 分支（PR #371、#372、#373）；在其合入前，本地复现需
+  显式应用补丁。
 - [ ] 按 `logs/README.md` 导出本次真实 AI Coding 会话；模板示例日志已删除，避免作为伪交付内容提交。
 
 ## L0 最小 NSH
