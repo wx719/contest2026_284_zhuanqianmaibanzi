@@ -21,3 +21,6 @@ out/
 *.elf
 *.hex
 *.map
+Make.dep
+*-d
+*.bak

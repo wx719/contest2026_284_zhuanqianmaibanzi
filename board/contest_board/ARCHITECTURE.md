@@ -15,15 +15,14 @@ VelaPoka 是面向电子装配场景的固定工位视觉检查终端，基于 E
 | LCD Backlight| GPIO26                 | GPIO Out     | ✅ 已适配  |
 | PHY Reset   | GPIO51                  | GPIO Out     | ✅ 已适配  |
 | I2C (GT911) | GPIO7(SDA)/GPIO8(SCL)   | SW I2C 400K  | ✅ 已适配  |
-| MIPI-DSI    | 专用差分对 (2 lane)      | DSI 1Gbps    | ⬜ 待适配  |
-| MIPI-CSI    | 专用差分对 (2 lane)      | CSI          | ⬜ 待适配  |
-| SDMMC1      | GPIO39-44               | SDIO 4-bit   | ⬜ 待适配  |
-| SDMMC2      | GPIO45-50               | SDIO 4-bit   | ⬜ 待适配  |
+| MIPI-DSI    | 专用差分对 (2 lane)      | DSI 1Gbps    | ✅ 已适配  |
+| MIPI-CSI    | 专用差分对 (2 lane)      | CSI RAW10    | ✅ 已适配  |
+| MicroSD     | GPIO39/43/44/42          | SPI2         | ✅ 已适配  |
 | Ethernet    | GPIO34,49,50,28-31,52   | RMII         | ✅ 已适配  |
 | MDC/MDIO    | GPIO31/52               | MDIO         | ✅ 已适配  |
 | PSRAM       | MSPI 专用               | Octal SPI    | ✅ 已适配  |
-| LDO CH3     | 内部                    | 2.5V (DSI)   | ⬜ 待适配  |
-| LDO CH4     | 内部                    | VDDIO (SD)   | ⬜ 待适配  |
+| LDO CH3     | 内部                    | 2.5V (DSI/CSI) | ✅ 已适配 |
+| LDO CH4     | 内部                    | 3.3V (MicroSD) | ✅ 已适配 |
 | WiFi        | GPIO14-19，Reset GPIO54 | SDIO 4-bit / ESP-Hosted | ✅ 驱动层实板通过 |
 | Audio       | I2S + I2C               | ES8311       | 🔄 可选   |
 
@@ -72,31 +71,33 @@ VelaPoka 是面向电子装配场景的固定工位视觉检查终端，基于 E
 - 工作：defconfig 添加 SPIRAM 配置
 - 验收：`cat /dev/velapoka` 显示 extern_ram_seg 有使用量
 
-### Phase 2: MIPI-DSI + LCD Framebuffer
+### Phase 2: MIPI-DSI + LCD Framebuffer ✅
 - 目标：7 英寸 1024x600 显示输出
 - 工作：
   - LDO CH3 2.5V 初始化（DSI 供电）
   - MIPI-DSI host 初始化（2 lane, 1Gbps）
   - LCD panel 初始化（复位序列 + DCS 命令）
   - 注册 NuttX framebuffer `/dev/fb0`
-- 验收：`fb` 测试程序在屏幕上画图
+- 验收：`/dev/fb0` 以 1024x600 RGB565 双缓冲运行，触屏产品 UI 无撕裂显示
 
-### Phase 3: MIPI-CSI + Camera
+### Phase 3: MIPI-CSI + Camera ✅
 - 目标：2MP 摄像头图像采集
 - 工作：
   - CSI host 初始化（2 lane）
   - Camera sensor I2C 配置
   - DMA 帧缓冲管理（双缓冲，PSRAM 分配）
   - 注册 V4L2 设备 `/dev/video0`
-- 验收：`v4l2` 工具捕获一帧图像
+- 验收：`/dev/video0` 注册成功，两次 `camtest preview 3 5000` 均取得完整
+  1152000 字节帧，产品实时预览和检测链路通过
 
-### Phase 4: SDMMC + 文件系统
+### Phase 4: MicroSD + 文件系统 ✅
 - 目标：MicroSD 卡读写
 - 工作：
-  - SDMMC1 host 初始化（GPIO39-44）
+  - SPI2 host 初始化（GPIO39/43/44/42）
   - LDO CH4 VDDIO 初始化
   - SD 卡探测 + FAT 文件系统挂载 `/mnt/sdcard`
-- 验收：文件读写测试通过
+- 验收：`/dev/mmcsd0` FAT32 挂载、模板/JSONL/BMP 持久化、卸载及断电后
+  Windows 读取均通过
 
 ### Phase 5: Ethernet ✅
 - 目标：10/100Mbps 有线网络
@@ -116,13 +117,17 @@ VelaPoka 是面向电子装配场景的固定工位视觉检查终端，基于 E
 - 清理移植期诊断日志后重新构建、烧录并完成相同双向 Ping 回归。
 - DHCP、吞吐量和长时间稳定性尚未作为本阶段验收结论。
 
-### Phase 6: 应用层
+### Phase 6: 应用层（进行中）
 - 目标：完整视觉装配检查功能
 - 工作：
   - 视觉检测算法（灰度差异、边缘、模板匹配）
   - 装配状态机（4 步防错流程）
   - UI 界面（触摸屏交互）
   - 异常记录与以太网导出
+
+当前单工序样本录入、固定区域差异检测、PASS/FAIL 显示、异常留档、启动历史恢复、
+触屏安全退出和 RJ45 HTTP 查询/导出已经实板通过。四工序顺序防错、定位标记校准和
+完整工程压力指标仍按产品开发计划继续推进。
 
 ### Wi-Fi 驱动增强
 

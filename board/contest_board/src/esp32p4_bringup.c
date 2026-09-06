@@ -47,8 +47,11 @@
 int board_mmcsd_initialize(void);
 #endif
 
-#ifdef CONFIG_VELAPOKA_WIFI
+#ifdef CONFIG_VELAPOKA_BSP
 #  include <arch/board/velapoka_bsp.h>
+#endif
+
+#ifdef CONFIG_VELAPOKA_WIFI
 #  include "velapoka_esp_hosted.h"
 #endif
 
@@ -332,6 +335,12 @@ int esp_bringup(void)
     {
       syslog(LOG_ERR, "ERROR: Failed to initialize MicroSD: %d\n", ret);
     }
+#ifdef CONFIG_VELAPOKA_BSP
+  else
+    {
+      velapoka_bsp_mark_ready(VELAPOKA_CAP_MICROSD);
+    }
+#endif
 #endif
 
 #ifdef CONFIG_ESPRESSIF_EMAC
@@ -340,6 +349,12 @@ int esp_bringup(void)
     {
       syslog(LOG_ERR, "ERROR: Ethernet initialization failed: %d\n", ret);
     }
+#ifdef CONFIG_VELAPOKA_BSP
+  else
+    {
+      velapoka_bsp_mark_ready(VELAPOKA_CAP_ETHERNET);
+    }
+#endif
 #endif
 
 #ifdef CONFIG_VELAPOKA_WIFI

@@ -8,7 +8,8 @@
 - [x] manifest 将该目录映射到 `vendor/openvela/boards/contest2026_284_board`。
 - [x] HAL 仓、目标文件和静态库均被忽略，不作为定制源码提交。
 - [x] 构建规则不会静默修改 NuttX 核心代码。
-- [ ] `upstream/nuttx/` 中的两个公共修复需按规则分别提交至 openvela/nuttx 的 `dev-ai-contest-2026` 分支；在其合入前，本地复现需显式应用补丁。
+- [ ] `upstream/nuttx/` 中的三个公共修复需按依赖关系分别提交至 openvela/nuttx
+  的 `dev-ai-contest-2026` 分支；在其合入前，本地复现需显式应用补丁。
 - [ ] 按 `logs/README.md` 导出本次真实 AI Coding 会话；模板示例日志已删除，避免作为伪交付内容提交。
 
 ## L0 最小 NSH
@@ -17,18 +18,19 @@
 - [x] UART0 控制台为 115200 8N1，TX/RX 为 GPIO37/GPIO38。
 - [x] `CONFIG_SYSTEM_NSH=y`，入口为 `nsh_main`。
 - [x] idle 栈和中断栈均为 2048 字节，RR 时间片为 200 ms。
-- [x] NET、PM、传感、音频、视频、FAT、LittleFS、TMPFS 和测试程序集均关闭。
+- [x] NET、PM、传感、音频、视频、LittleFS、TMPFS 和测试程序集均关闭；为让
+  最小恢复镜像可检查 MicroSD，保留 SPI2、MMC/SD 和 FAT。
 - [x] PROCFS/NSH_ARCHINIT 仅用于赛事建议的 `ps` 验证；dumpstack/backtrace 保留为移植期诊断。未增量启用外设子系统。
 
 ## 构建产物
 
-2026-08-09 在干净 NuttX `5d51399cb05` 基线上完成 `distclean -> configure -> olddefconfig -> make -j2`：
+2026-09-06 在 NuttX `5d51399cb05` 基线上重新配置并完成 `nsh` 全量构建：
 
 | 产物 | 大小 | SHA-256 |
 | --- | ---: | --- |
-| `nuttx/staging/libarch.a` | 1.4 MiB | `cbfb105c4481eb0471b6098a9d19fa769d09b84b4abae68c0b63220b543fd49c` |
-| `nuttx/staging/libboards.a` | 3.0 KiB | `66eea2dd29a6d3aed2592eaff65a1d0411b02ec140da9c5aad7c30fcaddc9ea6` |
-| `nuttx/vela_nuttx.bin` | 222 KiB | `8ff329a8e62b975a70164b3b2f2c93dd198fcb8118b6cfe3bfafc8779a8cb8a8` |
+| `nuttx/staging/libarch.a` | 1423258 B | `0b38debf44a4d62d42232509815dff35af9471892948465ac6e6cdea29b2a8ce` |
+| `nuttx/staging/libboards.a` | 2848 B | `3f07dbe77c9c1f64e741544cc036dd4ff540c1fc4c69799abec5cd1b1db8a204` |
+| `nuttx/vela_nuttx.bin` | 252956 B | `6bfbe6517c75236e99942fc29bb2aeb6ed03fe60848324bae1ea8d5cb40960a2` |
 
 ## VelaPoka 基础外设配置
 
@@ -37,19 +39,22 @@
 - [x] GPIO7/GPIO8 软件 I2C 与 GT911 touchscreen lower-half 完成编译和链接。
 - [x] `/dev/velapoka` 区分“板载能力”与“本次启动已就绪能力”。
 - [x] GT911 缺失或探测失败只记录错误，不阻断 NSH。
-- [ ] VelaPoka 配置仍需连接 7 英寸屏后完成 GPIO/I2C/GT911 实板 smoke test。
+- [x] 7 英寸屏、GPIO/I2C 和 GT911 已完成实板 smoke test，显示与触摸分别注册为
+  `/dev/fb0` 和 `/dev/input0`。
 - [x] PSRAM 已识别并映射 32 MiB，且与 EMAC 同时启用时可正常启动。
 - [x] EMAC 已注册为 NuttX `eth0`，RMII/SMI、PHY 链路、ARP 与双向 ICMP 实板验证通过。
-- [ ] MIPI-CSI 和 SDMMC 仍未完成对应设备节点与实板 smoke test。
+- [x] SC2336/CSI 注册为 `/dev/video0`，连续采集完整帧和产品实时预览已通过。
+- [x] MicroSD 通过 SPI2 注册为 `/dev/mmcsd0`；FAT32 挂载、读写、卸载、断电后
+  Windows 读取，以及模板、JSONL 和 FAIL BMP 持久化均已通过。
+- [x] Ethernet 与 MicroSD 初始化成功后分别设置 BSP ready 位；2026-09-06
+  `nsh` 和 `velapoka` 重新构建通过，修正后的 ready 位仍待本次固件实板回归。
 
-2026-08-10 的 `velapoka` 构建已完成编译、链接和 `esptool.py v4.8.1` 打包：
+2026-09-06 的 `velapoka` 构建已完成编译、链接和 `esptool.py v4.8.1` 打包：
 
 | 产物 | 大小 | SHA-256 |
 | --- | ---: | --- |
-| `nuttx/nuttx` | 424120 B | `2893b9ed5786e3afe07701d82fac71f3fcd9860419cbb356e68f38c8f4d7dcc5` |
-| `nuttx/vela_nuttx.bin` | 245356 B | `3ddf906e8f2217648149b3da9e3e8d06c366a994ba4bc1751db2f73ee3ac6499` |
-
-详细记录见 `validation/2026-08-10-velapoka-basic-build.txt`。
+| `nuttx/nuttx` | 1647188 B | `07fa14b647ffc6a7b127b6ea285ac30e1ddae88089eb010805bf4fa8ebd4ec7d` |
+| `nuttx/vela_nuttx.bin` | 842260 B | `3170ab36266bd7ceef7055f2ea3752c9be75b3f2a95617d8ce3b902b6c9d712e` |
 
 ## 实板验证
 
@@ -64,7 +69,7 @@ ROM 显示的 SHA-256 comparison warning 来自 Espressif `--ram-only-header` si
 
 ## Ethernet 实板验收
 
-2026-08-24 使用清理移植期诊断日志后的 `velapoka` 固件完成验证：
+2026-08-24 至 2026-09-06 使用产品固件完成验证：
 
 | 项目 | 结果 |
 | --- | --- |
@@ -74,6 +79,8 @@ ROM 显示的 SHA-256 comparison warning 来自 Espressif `--ram-only-header` si
 | 开发板 → 主机 | 10 发 10 收，0% 丢包 |
 | 主机 → 开发板 | 4 发 4 收，0% 丢包 |
 | PSRAM 共存 | 32 MiB PSRAM 初始化后 EMAC 正常注册和通信 |
-| 最终固件 | `vela_nuttx.bin`, SHA-256 `f4367e9dd670017cae3fc3f283b94dbe0157feddf2f5822742b7f1362b600c77` |
+| HTTP 导出 | 状态 JSON、完整 JSONL、FAIL BMP、方法与路径保护均通过 |
+| 本地并发 | 网络请求期间样本录入、PASS/FAIL、SD 留档和断线恢复正常 |
 
-本次结论覆盖静态 IPv4、ARP 和 ICMP 双向通信。DHCP、TCP/UDP 吞吐量、长时间压力以及应用层 HTTP REST 数据导出尚未纳入已验证范围。
+当前结论覆盖静态 IPv4、ARP、ICMP、TCP HTTP 查询/导出和断线恢复。DHCP、
+TCP/UDP 吞吐量及长时间压力仍未纳入已验证范围。

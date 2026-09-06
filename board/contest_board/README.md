@@ -28,10 +28,11 @@ vendor/openvela/boards/contest2026_284_board
 
 构建、烧录和验证步骤见仓库根目录 [README](../../README.md)。
 
-当前 UART、控制 GPIO、I2C、GT911、PSRAM、MIPI-DSI framebuffer、SC2336/CSI
-和 EMAC 链路已完成相应实板 smoke test。显示注册为 `/dev/fb0`，相机注册为
+当前 UART、控制 GPIO、I2C、GT911、PSRAM、MIPI-DSI framebuffer、SC2336/CSI、
+MicroSD 和 EMAC 链路均已完成实板 smoke test。显示注册为 `/dev/fb0`，相机注册为
 `/dev/video0`，两次 `camtest preview 3 5000` 均获得完整 1152000 字节帧；
-EMAC 注册为 `eth0`，静态 IPv4 双向 Ping 已通过。SDMMC 适配已存在，但仍需
-完成 `/dev/mmcsd0`、FAT 挂载和 CRC 读回验收。板载 ESP32-C6 已通过 SDIO 和
-ESP-Hosted 接入 `wlan0`；实板已完成 transport/RPC、STA 启动、MAC 获取、
-netdev 注册和 BSP ready 位验收。本阶段未加入 Wi-Fi 联网应用。
+MicroSD 通过 SPI2 注册为 `/dev/mmcsd0`，FAT32 文件在卸载、断电后可由 Windows
+读取；EMAC 注册为 `eth0`，静态 IPv4 双向 Ping 和产品 HTTP 查询/导出均已通过。
+板载 ESP32-C6 已通过 SDIO 和 ESP-Hosted 接入 `wlan0`；实板已完成
+transport/RPC、STA 启动、MAC 获取、netdev 注册和 BSP ready 位验收。本阶段未
+加入 Wi-Fi 联网应用。
